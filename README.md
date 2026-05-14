@@ -1,8 +1,15 @@
-# CAMPWILL AI-Ready / Data Platform
+# CAMPWILL Data Platform
 
 CAMPWILL の EC・不動産事業のデータ基盤。BigQuery + n8n + Claude API による AI 分析自動化の **Phase 1（データ基盤構築）** の成果物を管理する。
 
 > 全社戦略・OKR は [campwill/](../campwill/) を参照。本リポジトリは How（実装）を扱う。
+
+---
+
+## 新メンバー向け
+
+- **まず読む**: [/CLAUDE.md](CLAUDE.md) — プロジェクト全体ガイド（Claude Code / Codex 用）
+- **セットアップ**: [docs/onboarding.md](docs/onboarding.md) — gcloud / 認証 / コストガード / 動作確認
 
 ---
 
