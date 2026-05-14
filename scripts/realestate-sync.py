@@ -29,8 +29,16 @@ from datetime import datetime, timezone
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-EXPORT_API_KEY = os.environ.get("EXPORT_API_KEY")
+EXPORT_API_KEY = (os.environ.get("EXPORT_API_KEY") or "").strip()
 EXPORT_BASE_URL = os.environ.get("EXPORT_BASE_URL", "https://tenant-leasing.onrender.com").rstrip("/")
+
+# 防御: PowerShell 経由で全角空白 / BOM 等が混入していないか
+if EXPORT_API_KEY and not EXPORT_API_KEY.isascii():
+    bad = [(i, c, hex(ord(c))) for i, c in enumerate(EXPORT_API_KEY) if ord(c) > 127]
+    raise RuntimeError(
+        f"EXPORT_API_KEY contains non-ASCII characters at: {bad[:5]} ... "
+        "Re-set the env var via `$env:EXPORT_API_KEY = Read-Host` to avoid copy-paste corruption."
+    )
 PROJECT = "campwill-realestate"
 DATASET = "raw"
 
