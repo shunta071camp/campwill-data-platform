@@ -34,7 +34,7 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {"name": "X-Api-Version", "value": "1.5"}
+            {"name": "X-Api-Version", "value": "1.6"}
           ]
         },
         "options": {
