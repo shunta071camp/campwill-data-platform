@@ -1,0 +1,7 @@
+[
+  {"name": "sku",            "type": "STRING", "mode": "REQUIRED", "description": "SKU コード (OPENLOGI item.code、Shopify variant.sku と一致)"},
+  {"name": "size_category",  "type": "STRING", "mode": "REQUIRED", "description": "OPENLOGI サイズ区分 (SS/60/80/100/120/140/160)"},
+  {"name": "valid_from",     "type": "DATE",   "mode": "REQUIRED", "description": "適用開始日"},
+  {"name": "valid_to",       "type": "DATE",   "mode": "REQUIRED", "description": "適用終了日 (現行は 9999-12-31)"},
+  {"name": "notes",          "type": "STRING", "mode": "NULLABLE", "description": "備考 (商品名 / 3辺合計 cm 等)"}
+]

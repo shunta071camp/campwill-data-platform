@@ -1,0 +1,8 @@
+sku,size_category,valid_from,valid_to,notes
+# SKU → OPENLOGI サイズ区分のマッピング (手動メンテ)
+# size_category: SS / 60 / 80 / 100 / 120 / 140 / 160
+# OPENLOGI 管理画面の商品一覧 CSV エクスポート or 商品ごとの 3辺合計 から判定
+# 例:
+# 24IFLUL,100,2024-01-01,9999-12-31,フライパン26cm
+# 24IFLU,100,2024-01-01,9999-12-31,フライパン24cm
+# 20SFLR,80,2024-01-01,9999-12-31,フライパン20cm

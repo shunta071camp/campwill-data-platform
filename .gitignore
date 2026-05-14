@@ -26,8 +26,11 @@ node_modules/
 # User-filled cost master CSV (contains business data)
 seeds/ec_cost_master.csv
 
-# User-filled OPENLOGI storage rate (実値)
-seeds/ec_openlogi_storage_rate.csv
+# OPENLOGI 料金マスタは公開情報なので commit する
+# (旧: seeds/ec_openlogi_storage_rate.csv は SKU 別だったが、size_category 別設計に変更し公開化)
+
+# User-filled OPENLOGI SKU→size_category mapping (事業者依存)
+seeds/ec_openlogi_sku_size_map.csv
 
 # Shopify backfill intermediate JSONL files (large, regeneratable)
 scripts/shopify-backfill/data/
