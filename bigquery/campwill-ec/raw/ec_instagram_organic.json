@@ -1,0 +1,14 @@
+[
+  {"name": "post_id",          "type": "STRING",    "mode": "REQUIRED", "description": "投稿ID（主キー1）"},
+  {"name": "date",             "type": "DATE",      "mode": "REQUIRED", "description": "集計日（主キー2）"},
+  {"name": "post_url",         "type": "STRING",    "mode": "NULLABLE", "description": "投稿URL"},
+  {"name": "media_type",       "type": "STRING",    "mode": "NULLABLE", "description": "投稿タイプ（IMAGE/CAROUSEL/REEL）"},
+  {"name": "posted_at",        "type": "TIMESTAMP", "mode": "NULLABLE", "description": "投稿日時"},
+  {"name": "impressions",      "type": "INTEGER",   "mode": "NULLABLE", "description": "インプレッション数"},
+  {"name": "reach",            "type": "INTEGER",   "mode": "NULLABLE", "description": "リーチ数"},
+  {"name": "likes",            "type": "INTEGER",   "mode": "NULLABLE", "description": "いいね数"},
+  {"name": "comments",         "type": "INTEGER",   "mode": "NULLABLE", "description": "コメント数"},
+  {"name": "saves",            "type": "INTEGER",   "mode": "NULLABLE", "description": "保存数"},
+  {"name": "engagement_rate",  "type": "FLOAT",     "mode": "NULLABLE", "description": "エンゲージメント率"},
+  {"name": "inserted_at",      "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BigQuery挿入日時"}
+]

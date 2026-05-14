@@ -1,0 +1,363 @@
+{
+  "name": "Yahoo Ads (Search + Display) - Backfill (Manual)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "from-date",
+              "name": "from_date",
+              "value": "20260201",
+              "type": "string"
+            },
+            {
+              "id": "to-date",
+              "name": "to_date",
+              "value": "20260506",
+              "type": "string"
+            },
+            {
+              "id": "search-account-id",
+              "name": "search_account_id",
+              "value": 1400012,
+              "type": "number"
+            },
+            {
+              "id": "display-account-id",
+              "name": "display_account_id",
+              "value": 1002710471,
+              "type": "number"
+            },
+            {
+              "id": "base-account-id",
+              "name": "base_account_id",
+              "value": 1002710470,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-params",
+      "name": "Set: Date Range (EDIT BEFORE EACH RUN)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        464,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ads-search.yahooapis.jp/api/v19/ReportDefinitionService/add",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-z-base-account-id",
+              "value": "={{ $json.base_account_id }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({accountId: Number($json.search_account_id), operand: [{accountId: Number($json.search_account_id), reportName: `campwill_search_${$json.from_date}_${$json.to_date}`, reportType: 'CAMPAIGN', reportDateRangeType: 'CUSTOM_DATE', dateRange: {startDate: $json.from_date, endDate: $json.to_date}, fields: ['DAY','CAMPAIGN_ID','CAMPAIGN_NAME','IMPS','CLICKS','COST','CONVERSIONS','CONV_VALUE'], reportDownloadFormat: 'CSV', reportDownloadEncode: 'UTF8', reportLanguage: 'EN', reportCompressType: 'NONE', reportIncludeDeleted: 'FALSE'}]}) }}",
+        "options": {}
+      },
+      "id": "submit-search-report",
+      "name": "Submit Search Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        688,
+        208
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "69iybieruWmrnF4L",
+          "name": "Yahoo Ads OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ads-display.yahooapis.jp/api/v19/ReportDefinitionService/add",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-z-base-account-id",
+              "value": "={{ $('Set: Date Range (EDIT BEFORE EACH RUN)').item.json.base_account_id }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const p = $('Set: Date Range (EDIT BEFORE EACH RUN)').item.json; return JSON.stringify({accountId: Number(p.display_account_id), operand: [{accountId: Number(p.display_account_id), reportName: `campwill_display_${p.from_date}_${p.to_date}`, reportDateRangeType: 'CUSTOM_DATE', dateRange: {startDate: p.from_date, endDate: p.to_date}, fields: ['DAY','CAMPAIGN_ID','CAMPAIGN_NAME','IMPS','CLICKS','COST','CONVERSIONS','CONV_VALUE'], reportDownloadFormat: 'CSV', reportDownloadEncode: 'UTF8', reportLanguage: 'EN', reportCompressType: 'NONE', reportIncludeDeleted: 'FALSE'}]}); })() }}",
+        "options": {}
+      },
+      "id": "submit-display-report",
+      "name": "Submit Display Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        688,
+        400
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "69iybieruWmrnF4L",
+          "name": "Yahoo Ads OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 60
+      },
+      "id": "wait-for-reports",
+      "name": "Wait 60s for Report Generation",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        912,
+        304
+      ],
+      "webhookId": "01707f6f-8576-491f-a499-ef29fa86d346"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Yahoo Ads ReportDefinitionService.add のレスポンスから reportJobId と campaign_type を抽出\n// 検索広告とディスプレイ広告を1件ずつまとめる\n\nconst safeFirst = (nodeName) => {\n  try { return $(nodeName).first().json; } catch (e) { return null; }\n};\n\nconst searchResp = safeFirst('Submit Search Report');\nconst displayResp = safeFirst('Submit Display Report');\n\nconst extractJobId = (resp) => {\n  const values = (resp && resp.rval && resp.rval.values) || [];\n  if (values.length > 0 && values[0].reportDefinition) {\n    return values[0].reportDefinition.reportJobId;\n  }\n  return null;\n};\n\nconst params = $('Set: Date Range (EDIT BEFORE EACH RUN)').first().json;\n\nreturn [\n  { json: { campaign_type: 'search', reportJobId: extractJobId(searchResp), accountId: params.search_account_id, endpoint: 'https://ads-search.yahooapis.jp/api/v19' } },\n  { json: { campaign_type: 'display', reportJobId: extractJobId(displayResp), accountId: params.display_account_id, endpoint: 'https://ads-display.yahooapis.jp/api/v19' } }\n].filter(it => it.json.reportJobId);\n"
+      },
+      "id": "extract-job-ids",
+      "name": "Extract Report Job IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.endpoint }}/ReportDefinitionService/download",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/octet-stream"
+            },
+            {
+              "name": "x-z-base-account-id",
+              "value": "={{ $('Set: Date Range (EDIT BEFORE EACH RUN)').item.json.base_account_id }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({accountId: Number($json.accountId), reportJobId: Number($json.reportJobId)}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "download-report",
+      "name": "Download Report CSV",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1344,
+        304
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "69iybieruWmrnF4L",
+          "name": "Yahoo Ads OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Yahoo Ads CSV を parse → raw.ec_yahoo_ads スキーマに正規化\n// Search header:  Day,CampaignID,Campaign name,Impressions,Clicks,Cost,Conversions,Conv. value\n// Display header: Daily,Campaign ID,Campaign Name,Impressions,Clicks,Cost,Conversions,Conv. value\n// Display は末尾に Total 行があるのでスキップ\n\nconst rows = [];\nconst now = new Date().toISOString();\n\nconst norm = (s) => String(s || \"\").toUpperCase().replace(/[^A-Z0-9]/g, \"\");\n\nconst HEADER_ALIASES = {\n  date:         [\"DAY\", \"DAILY\"],\n  campaignId:   [\"CAMPAIGNID\"],\n  campaignName: [\"CAMPAIGNNAME\"],\n  impressions:  [\"IMPRESSIONS\", \"IMPS\"],\n  clicks:       [\"CLICKS\"],\n  cost:         [\"COST\"],\n  conversions:  [\"CONVERSIONS\"],\n  revenue:      [\"CONVVALUE\", \"CONVERSIONVALUE\"],\n};\n\nconst findIdx = (header, aliases) => {\n  for (const a of aliases) {\n    const i = header.findIndex(h => norm(h) === a);\n    if (i >= 0) return i;\n  }\n  return -1;\n};\n\nconst inputItems = $input.all();\nconst extractItems = $('Extract Report Job IDs').all();\n\nfor (let inputIdx = 0; inputIdx < inputItems.length; inputIdx++) {\n  const item = inputItems[inputIdx];\n  const csvText = (typeof item.json === \"string\") ? item.json : (item.json.data || item.json.body || \"\");\n  // Download HTTP ノードが $json を CSV body で上書きするので、Extract の同 index 出力から campaign_type 復元\n  const original = extractItems[inputIdx];\n  const campaignType = (original && original.json && original.json.campaign_type) || item.json.campaign_type || \"unknown\";\n  if (!csvText || typeof csvText !== \"string\") continue;\n\n  const lines = csvText.split(/\\r?\\n/).filter(l => l.trim().length > 0);\n  if (lines.length < 2) continue;\n\n  const header = lines[0].split(\",\").map(h => h.trim().replace(/\"/g, \"\"));\n  const idx = {\n    date:         findIdx(header, HEADER_ALIASES.date),\n    campaignId:   findIdx(header, HEADER_ALIASES.campaignId),\n    campaignName: findIdx(header, HEADER_ALIASES.campaignName),\n    impressions:  findIdx(header, HEADER_ALIASES.impressions),\n    clicks:       findIdx(header, HEADER_ALIASES.clicks),\n    cost:         findIdx(header, HEADER_ALIASES.cost),\n    conversions:  findIdx(header, HEADER_ALIASES.conversions),\n    revenue:      findIdx(header, HEADER_ALIASES.revenue),\n  };\n\n  for (let i = 1; i < lines.length; i++) {\n    const fields = lines[i].split(\",\").map(f => f.trim().replace(/\"/g, \"\"));\n    const dayRaw = fields[idx.date];\n    const cid = fields[idx.campaignId];\n\n    if (!dayRaw || dayRaw === \"Total\" || dayRaw === \"--\") continue;\n    if (!cid || cid === \"--\") continue;\n\n    let date = dayRaw;\n    if (/^\\d{8}$/.test(dayRaw)) {\n      date = dayRaw.slice(0, 4) + \"-\" + dayRaw.slice(4, 6) + \"-\" + dayRaw.slice(6, 8);\n    }\n\n    rows.push({\n      date,\n      campaign_id: cid,\n      campaign_name: idx.campaignName >= 0 ? (fields[idx.campaignName] || null) : null,\n      campaign_type: campaignType,\n      ad_group_id: null,\n      impressions: idx.impressions >= 0 ? Number(fields[idx.impressions]) : null,\n      clicks:      idx.clicks >= 0 ? Number(fields[idx.clicks]) : null,\n      cost:        idx.cost >= 0 ? Math.round(Number(fields[idx.cost])) : null,\n      conversions: idx.conversions >= 0 ? Number(fields[idx.conversions]) : null,\n      revenue:     idx.revenue >= 0 ? Math.round(Number(fields[idx.revenue])) : null,\n      inserted_at: now\n    });\n  }\n}\n\nreturn rows.map(json => ({ json }));\n"
+      },
+      "id": "parse-csv",
+      "name": "Parse CSV → Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "raw",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "ec_yahoo_ads",
+          "cachedResultName": "ec_yahoo_ads"
+        },
+        "options": {}
+      },
+      "id": "bq-insert",
+      "name": "BigQuery: Insert raw.ec_yahoo_ads",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        304
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set: Date Range (EDIT BEFORE EACH RUN)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: Date Range (EDIT BEFORE EACH RUN)": {
+      "main": [
+        [
+          {
+            "node": "Submit Search Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Search Report": {
+      "main": [
+        [
+          {
+            "node": "Submit Display Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Display Report": {
+      "main": [
+        [
+          {
+            "node": "Wait 60s for Report Generation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 60s for Report Generation": {
+      "main": [
+        [
+          {
+            "node": "Extract Report Job IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Report Job IDs": {
+      "main": [
+        [
+          {
+            "node": "Download Report CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Report CSV": {
+      "main": [
+        [
+          {
+            "node": "Parse CSV → Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CSV → Rows": {
+      "main": [
+        [
+          {
+            "node": "BigQuery: Insert raw.ec_yahoo_ads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tokyo"
+  }
+}

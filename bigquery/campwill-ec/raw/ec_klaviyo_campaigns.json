@@ -1,0 +1,16 @@
+[
+  {"name": "campaign_id",     "type": "STRING",    "mode": "REQUIRED", "description": "キャンペーンID（主キー）"},
+  {"name": "campaign_name",   "type": "STRING",    "mode": "NULLABLE", "description": "キャンペーン名"},
+  {"name": "sent_at",         "type": "TIMESTAMP", "mode": "NULLABLE", "description": "送信日時"},
+  {"name": "sent_day_of_week","type": "STRING",    "mode": "NULLABLE", "description": "送信曜日"},
+  {"name": "sent_hour",       "type": "INTEGER",   "mode": "NULLABLE", "description": "送信時刻（時）"},
+  {"name": "recipients",      "type": "INTEGER",   "mode": "NULLABLE", "description": "送信数"},
+  {"name": "opens",           "type": "INTEGER",   "mode": "NULLABLE", "description": "開封数"},
+  {"name": "open_rate",       "type": "FLOAT",     "mode": "NULLABLE", "description": "開封率"},
+  {"name": "clicks",          "type": "INTEGER",   "mode": "NULLABLE", "description": "クリック数"},
+  {"name": "click_rate",      "type": "FLOAT",     "mode": "NULLABLE", "description": "クリック率"},
+  {"name": "conversions",     "type": "INTEGER",   "mode": "NULLABLE", "description": "CV数"},
+  {"name": "revenue",         "type": "INTEGER",   "mode": "NULLABLE", "description": "売上貢献額（円）"},
+  {"name": "unsubscribes",    "type": "INTEGER",   "mode": "NULLABLE", "description": "送信停止数"},
+  {"name": "inserted_at",     "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BigQuery挿入日時"}
+]

@@ -1,0 +1,13 @@
+[
+  {"name": "provider",      "type": "STRING",    "mode": "REQUIRED", "description": "プロバイダ識別子"},
+  {"name": "refresh_token", "type": "STRING",    "mode": "REQUIRED", "description": "この試行で使われた / 取得された refresh_token"},
+  {"name": "access_token",  "type": "STRING",    "mode": "NULLABLE", "description": "成功時の access_token"},
+  {"name": "expires_at",    "type": "TIMESTAMP", "mode": "NULLABLE", "description": "access_token の expiry (UTC)"},
+  {"name": "scope",         "type": "STRING",    "mode": "NULLABLE", "description": "scope 文字列"},
+  {"name": "rotated_at",    "type": "TIMESTAMP", "mode": "REQUIRED", "description": "refresh 試行時刻"},
+  {"name": "rotated_by",    "type": "STRING",    "mode": "NULLABLE", "description": "どのworkflowが試行したか"},
+  {"name": "status",        "type": "STRING",    "mode": "REQUIRED", "description": "success | error"},
+  {"name": "error_message", "type": "STRING",    "mode": "NULLABLE", "description": "失敗時のエラー本文"},
+  {"name": "http_code",     "type": "INTEGER",   "mode": "NULLABLE", "description": "HTTP status code"},
+  {"name": "recorded_at",   "type": "TIMESTAMP", "mode": "REQUIRED", "description": "この行を記録した時刻"}
+]

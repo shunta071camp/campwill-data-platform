@@ -1,0 +1,14 @@
+[
+  {"name": "fetched_date",    "type": "DATE",      "mode": "REQUIRED", "description": "取得日 (JST)"},
+  {"name": "target_url",      "type": "STRING",    "mode": "REQUIRED", "description": "調査対象 URL (例: https://ku-bell.com/)"},
+  {"name": "match_type",      "type": "STRING",    "mode": "NULLABLE", "description": "sub_domain / exact_url / etc"},
+  {"name": "domain",          "type": "STRING",    "mode": "NULLABLE", "description": "対象ドメイン (例: ku-bell.com)"},
+  {"name": "keyword",         "type": "STRING",    "mode": "REQUIRED", "description": "キーワード"},
+  {"name": "search_volume",   "type": "INTEGER",   "mode": "NULLABLE", "description": "月間検索ボリューム"},
+  {"name": "seo_difficulty",  "type": "INTEGER",   "mode": "NULLABLE", "description": "SEO 難易度 (0-100)"},
+  {"name": "cpc",             "type": "FLOAT",     "mode": "NULLABLE", "description": "CPC ($)"},
+  {"name": "competition",     "type": "FLOAT",     "mode": "NULLABLE", "description": "広告競合性"},
+  {"name": "rank",            "type": "INTEGER",   "mode": "NULLABLE", "description": "Google 検索順位 (NULL の場合あり)"},
+  {"name": "etv",             "type": "FLOAT",     "mode": "NULLABLE", "description": "推定流入価値 (Estimated Traffic Value)"},
+  {"name": "inserted_at",     "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BQ 挿入時刻"}
+]

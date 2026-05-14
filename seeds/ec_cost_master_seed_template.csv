@@ -1,0 +1,3 @@
+sku,cost_price,valid_from,valid_to
+EXAMPLE-SKU-001,500,2026-01-01,2026-12-31
+EXAMPLE-SKU-002,1200,2026-01-01,2026-12-31

@@ -1,0 +1,96 @@
+{
+  "name": "rakko-inflow-weekly",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 4 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "Schedule: Monday 4:00 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 304]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 自社 + 競合 6 サイトの URL リスト\n// 各 URL に対して /v1/influx-keywords を叩く\nreturn [\n  { json: { target_url: 'https://ku-bell.com/', match_type: 'sub_domain' } },\n  { json: { target_url: 'https://iron-pro.jp/', match_type: 'sub_domain' } },\n  { json: { target_url: 'https://fujinos.theshop.jp/', match_type: 'sub_domain' } },\n  { json: { target_url: 'https://www.vitacraft.co.jp/', match_type: 'sub_domain' } },\n  { json: { target_url: 'https://www.t-fal.co.jp/', match_type: 'sub_domain' } },\n  { json: { target_url: 'https://kyocera-kitchen.com/', match_type: 'sub_domain' } },\n  { json: { target_url: 'https://www.vermicular.jp/', match_type: 'sub_domain' } }\n];\n"
+      },
+      "id": "targets",
+      "name": "Code: Target URL List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [464, 304]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "url": "https://api.rakkokeyword.com/v1/influx-keywords",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "Content-Type", "value": "application/json"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  targets: [{ url: $json.target_url, matchType: $json.match_type }],\n  keywordCollapse: true,\n  sortBy: 'searchVolume',\n  limit: 10000\n}) }}",
+        "options": {"timeout": 120000}
+      },
+      "id": "rakko-call",
+      "name": "Rakko API: /v1/influx-keywords",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [688, 304],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ZxyeOSTF5KQGacqS",
+          "name": "Rakko Keyword API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rakko API response から BQ 用の行を生成\n// 注: HTTP node は item ごとに 1 回呼ばれる前提 (n8n の標準動作)\n\nconst now = new Date().toISOString();\nconst todayJST = new Date(Date.now() + 9*60*60*1000).toISOString().split('T')[0];\nconst targetItems = $('Code: Target URL List').all();\nconst rows = [];\n\nfor (let i = 0; i < $input.all().length; i++) {\n  const resp = $input.all()[i].json;\n  const targetInfo = targetItems[i].json;\n  const targetUrl = targetInfo.target_url;\n  const matchType = targetInfo.match_type;\n  const domain = targetUrl.replace(/^https?:\\/\\//, '').split('/')[0];\n  const items = (resp && resp.data && resp.data.items) || [];\n\n  for (const it of items) {\n    const m = it.metrics || {};\n    rows.push({\n      fetched_date: todayJST,\n      target_url: targetUrl,\n      match_type: matchType,\n      domain: domain,\n      keyword: it.keyword || '',\n      search_volume: m.searchVolume != null ? Number(m.searchVolume) : null,\n      seo_difficulty: m.seoDifficulty != null ? Number(m.seoDifficulty) : null,\n      cpc: m.cpc != null ? Number(m.cpc) : null,\n      competition: m.competition != null ? Number(m.competition) : null,\n      rank: m.rank != null ? Number(m.rank) : null,\n      etv: m.etv != null ? Number(m.etv) : null,\n      inserted_at: now\n    });\n  }\n}\n\nreturn rows.map(json => ({ json }));\n"
+      },
+      "id": "flatten",
+      "name": "Code: Flatten to BQ Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [912, 304]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {"__rl": true, "mode": "list", "value": "campwill-ec", "cachedResultName": "campwill-ec"},
+        "datasetId": {"__rl": true, "mode": "list", "value": "raw", "cachedResultName": "raw"},
+        "tableId":   {"__rl": true, "mode": "list", "value": "rakko_inflow_keywords", "cachedResultName": "rakko_inflow_keywords"},
+        "options": {}
+      },
+      "id": "bq-insert",
+      "name": "BigQuery: Insert raw.rakko_inflow_keywords",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [1136, 304],
+      "credentials": {
+        "googleApi": {"id": "WCCQWQHLcPs05bNu", "name": "Google Service Account account（EC）"}
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: Monday 4:00 AM JST": {"main": [[{"node": "Code: Target URL List", "type": "main", "index": 0}]]},
+    "Code: Target URL List": {"main": [[{"node": "Rakko API: /v1/influx-keywords", "type": "main", "index": 0}]]},
+    "Rakko API: /v1/influx-keywords": {"main": [[{"node": "Code: Flatten to BQ Rows", "type": "main", "index": 0}]]},
+    "Code: Flatten to BQ Rows": {"main": [[{"node": "BigQuery: Insert raw.rakko_inflow_keywords", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1", "errorWorkflow": "V72FkZBDign2AB1y"}
+}

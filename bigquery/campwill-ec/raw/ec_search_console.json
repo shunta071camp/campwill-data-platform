@@ -1,0 +1,10 @@
+[
+  {"name": "date",         "type": "DATE",      "mode": "REQUIRED", "description": "日付"},
+  {"name": "page",         "type": "STRING",    "mode": "REQUIRED", "description": "記事URL（landing_siteとの結合キー）"},
+  {"name": "query",        "type": "STRING",    "mode": "REQUIRED", "description": "検索クエリ"},
+  {"name": "clicks",       "type": "INTEGER",   "mode": "NULLABLE", "description": "クリック数"},
+  {"name": "impressions",  "type": "INTEGER",   "mode": "NULLABLE", "description": "表示回数"},
+  {"name": "ctr",          "type": "FLOAT",     "mode": "NULLABLE", "description": "クリック率"},
+  {"name": "position",     "type": "FLOAT",     "mode": "NULLABLE", "description": "平均掲載順位"},
+  {"name": "inserted_at",  "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BigQuery挿入日時"}
+]

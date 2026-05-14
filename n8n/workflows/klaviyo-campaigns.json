@@ -1,0 +1,213 @@
+{
+  "name": "klaviyo_campaigns",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 4 * * *"
+            }
+          ]
+        }
+      },
+      "id": "1b2021c9-b8eb-40ed-8f91-4d2d48af9580",
+      "name": "Schedule: 4:00 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://a.klaviyo.com/api/campaigns/",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filter",
+              "value": "equals(messages.channel,\"email\")"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/vnd.api+json"
+            },
+            {
+              "name": "revision",
+              "value": "2024-10-15"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "71f6e163-f9fb-4bd7-8bd7-78811b35703f",
+      "name": "HTTP: Klaviyo Campaigns Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1344,
+        240
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eeW1GgHZ1JTnXWfE",
+          "name": "klaviyo credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://a.klaviyo.com/api/campaign-values-reports/",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/vnd.api+json"
+            },
+            {
+              "name": "content-type",
+              "value": "application/vnd.api+json"
+            },
+            {
+              "name": "revision",
+              "value": "2024-10-15"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"data\": {\n    \"type\": \"campaign-values-report\",\n    \"attributes\": {\n      \"statistics\": [\"recipients\", \"delivered\", \"opens_unique\", \"open_rate\", \"clicks_unique\", \"click_rate\", \"unsubscribes\", \"conversion_uniques\", \"conversion_value\"],\n      \"timeframe\": { \"key\": \"last_90_days\" },\n      \"conversion_metric_id\": \"W5rqEy\"\n    }\n  }\n}",
+        "options": {}
+      },
+      "id": "86435ceb-d334-49b2-8fb6-c25922cb7c44",
+      "name": "HTTP: Klaviyo Campaign Values Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1568,
+        240
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eeW1GgHZ1JTnXWfE",
+          "name": "klaviyo credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Helper: HTTP Request が string で返した場合は JSON.parse して正規化 (sync test 2026-05-07)\nfunction normalize(item) {\n  if (item && item.json && typeof item.json.data === 'string') {\n    try {\n      return { json: JSON.parse(item.json.data) };\n    } catch (e) {\n      return item;\n    }\n  }\n  return item;\n}\n\nconst now = new Date().toISOString();\n\n// --- Build stats lookup by campaign_id ---\nconst statsItems = $('HTTP: Klaviyo Campaign Values Report').all().map(normalize);\nconst statsByCampaign = {};\nfor (const item of statsItems) {\n  const results = (item.json && item.json.data && item.json.data.attributes && item.json.data.attributes.results) || [];\n  for (const r of results) {\n    const cid = r.groupings && r.groupings.campaign_id;\n    if (cid) statsByCampaign[cid] = r.statistics || {};\n  }\n}\n\n// --- Iterate campaign metadata items ---\nconst rows = [];\nfor (const rawItem of $('HTTP: Klaviyo Campaigns Metadata').all()) {\n  const item = normalize(rawItem);\n  const campaigns = (item.json && Array.isArray(item.json.data)) ? item.json.data : [];\n  for (const c of campaigns) {\n    const attrs = c.attributes || {};\n    const stats = statsByCampaign[c.id] || {};\n    const sentAt = attrs.send_time || attrs.scheduled_at || null;\n    let dow = null, hour = null;\n    if (sentAt) {\n      const d = new Date(sentAt);\n      dow = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getUTCDay()];\n      hour = d.getUTCHours();\n    }\n    rows.push({\n      campaign_id: c.id,\n      campaign_name: attrs.name || null,\n      sent_at: sentAt,\n      sent_day_of_week: dow,\n      sent_hour: hour,\n      recipients: stats.recipients != null ? Number(stats.recipients) : null,\n      opens: stats.opens_unique != null ? Number(stats.opens_unique) : (stats.opens != null ? Number(stats.opens) : null),\n      open_rate: stats.open_rate != null ? Number(stats.open_rate) : null,\n      clicks: stats.clicks_unique != null ? Number(stats.clicks_unique) : (stats.clicks != null ? Number(stats.clicks) : null),\n      click_rate: stats.click_rate != null ? Number(stats.click_rate) : null,\n      conversions: stats.conversion_uniques != null ? Number(stats.conversion_uniques) : (stats.conversions != null ? Number(stats.conversions) : null),\n      revenue: stats.conversion_value != null ? Math.round(Number(stats.conversion_value)) : (stats.revenue != null ? Math.round(Number(stats.revenue)) : null),\n      unsubscribes: stats.unsubscribes != null ? Number(stats.unsubscribes) : null,\n      inserted_at: now\n    });\n  }\n}\n\nreturn rows.map((json) => ({ json }));\n"
+      },
+      "id": "3a5f6b1a-11a7-423c-bf5e-11c6fad58f1d",
+      "name": "Merge + Transform",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "raw",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "ec_klaviyo_campaigns",
+          "cachedResultName": "ec_klaviyo_campaigns"
+        },
+        "options": {}
+      },
+      "id": "0ad80bb1-22bf-4c7e-9684-5de5fccec0ab",
+      "name": "BigQuery: Insert raw.ec_klaviyo_campaigns",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        240
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: 4:00 AM JST": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Klaviyo Campaigns Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Klaviyo Campaigns Metadata": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Klaviyo Campaign Values Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Klaviyo Campaign Values Report": {
+      "main": [
+        [
+          {
+            "node": "Merge + Transform",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge + Transform": {
+      "main": [
+        [
+          {
+            "node": "BigQuery: Insert raw.ec_klaviyo_campaigns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

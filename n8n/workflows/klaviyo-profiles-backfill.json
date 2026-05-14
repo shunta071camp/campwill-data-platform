@@ -1,0 +1,198 @@
+{
+  "name": "klaviyo_profiles_backfill",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        -256
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-from",
+              "name": "from_date",
+              "value": "2020-01-01T00:00:00Z",
+              "type": "string"
+            },
+            {
+              "id": "assign-to",
+              "name": "to_date",
+              "value": "2022-01-01T00:00:00Z",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-date-range",
+      "name": "Set: Date Range (EDIT BEFORE EACH RUN)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        464,
+        -256
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://a.klaviyo.com/api/profiles/?additional-fields%5Bprofile%5D=predictive_analytics&page%5Bsize%5D=100&filter=' + encodeURIComponent('greater-than(created,' + $json.from_date + '),less-than(created,' + $json.to_date + ')') }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/vnd.api+json"
+            },
+            {
+              "name": "revision",
+              "value": "2024-10-15"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ (typeof $response.body === 'string' ? JSON.parse($response.body) : $response.body).links.next }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.links.next }}",
+              "limitPagesFetched": true,
+              "maxRequests": 50
+            }
+          }
+        }
+      },
+      "id": "http-klaviyo-backfill",
+      "name": "HTTP: Klaviyo Profiles (created range)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        -256
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eeW1GgHZ1JTnXWfE",
+          "name": "klaviyo credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Klaviyo profiles initial backfill: created の日付範囲で取得した profile を BigQuery に append。\n// 同設計の incremental workflow と Transform ロジックは同一。\n\nfunction normalize(item) {\n  if (item && item.json && typeof item.json.data === 'string') {\n    try { return { json: JSON.parse(item.json.data) }; } catch (e) { return item; }\n  }\n  return item;\n}\n\nconst toIntYen = (v) => {\n  if (v === null || v === undefined || v === '') return null;\n  return Math.round(Number(v));\n};\n\nconst rows = [];\nconst now = new Date().toISOString();\n\nfor (const rawItem of $input.all()) {\n  const item = normalize(rawItem);\n  const profiles = (item.json && Array.isArray(item.json.data)) ? item.json.data : [];\n  for (const p of profiles) {\n    const attrs = p.attributes || {};\n    if (!attrs.email) continue;\n    const pa = attrs.predictive_analytics || {};\n    rows.push({\n      profile_id: p.id,\n      email: attrs.email,\n      first_name: attrs.first_name || null,\n      last_name: attrs.last_name || null,\n      total_revenue: toIntYen(pa.historic_clv),\n      created_at: attrs.created || null,\n      updated_at: attrs.updated || attrs.updated_at || attrs.last_event_date || attrs.created || null,\n      inserted_at: now\n    });\n  }\n}\n\nreturn rows.map((json) => ({ json }));\n"
+      },
+      "id": "transform-backfill",
+      "name": "Transform",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        -256
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "raw",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "ec_klaviyo_profiles",
+          "cachedResultName": "ec_klaviyo_profiles"
+        },
+        "options": {}
+      },
+      "id": "bq-insert-backfill",
+      "name": "BigQuery: Insert raw.ec_klaviyo_profiles",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        -256
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set: Date Range (EDIT BEFORE EACH RUN)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: Date Range (EDIT BEFORE EACH RUN)": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Klaviyo Profiles (created range)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Klaviyo Profiles (created range)": {
+      "main": [
+        [
+          {
+            "node": "Transform",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform": {
+      "main": [
+        [
+          {
+            "node": "BigQuery: Insert raw.ec_klaviyo_profiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tokyo"
+  }
+}

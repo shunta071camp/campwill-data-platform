@@ -1,0 +1,705 @@
+{
+  "name": "MicrosoftAd_backfill",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "fd9d1465-4e28-4dfb-9c9f-0fef108715d9",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1328,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "from-date",
+              "name": "from_date",
+              "value": "2026-04-30",
+              "type": "string"
+            },
+            {
+              "id": "to-date",
+              "name": "to_date",
+              "value": "2026-04-30",
+              "type": "string"
+            },
+            {
+              "id": "developer-token",
+              "name": "developer_token",
+              "value": "107JEV81L0691938",
+              "type": "string"
+            },
+            {
+              "id": "customer-id",
+              "name": "customer_id",
+              "value": "254503316",
+              "type": "string"
+            },
+            {
+              "id": "account-id",
+              "name": "account_id",
+              "value": "189127337",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e1330277-f4c1-41a0-b14d-d20e53439c0e",
+      "name": "Set: Date Range (EDIT BEFORE EACH RUN)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1104,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://reporting.api.bingads.microsoft.com/Reporting/v13/GenerateReport/Submit",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Set: OAuth Context').item.json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "DeveloperToken",
+              "value": "={{ $json.developer_token }}"
+            },
+            {
+              "name": "CustomerId",
+              "value": "={{ $json.customer_id }}"
+            },
+            {
+              "name": "CustomerAccountId",
+              "value": "={{ $json.account_id }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"ReportRequest\": {\n    \"Type\": \"CampaignPerformanceReportRequest\",\n    \"Format\": \"Csv\",\n    \"FormatVersion\": \"2.0\",\n    \"ReportName\": \"campwill_backfill_{{ $json.from_date }}_{{ $json.to_date }}\",\n    \"ReturnOnlyCompleteData\": false,\n    \"Aggregation\": \"Daily\",\n    \"Columns\": [\"TimePeriod\", \"CampaignId\", \"CampaignName\", \"CampaignType\", \"Impressions\", \"Clicks\", \"Spend\", \"Conversions\", \"Revenue\"],\n    \"Scope\": {\n      \"AccountIds\": [{{ $json.account_id }}]\n    },\n    \"Time\": {\n      \"CustomDateRangeStart\": {\"Day\": {{ Number($json.from_date.split('-')[2]) }}, \"Month\": {{ Number($json.from_date.split('-')[1]) }}, \"Year\": {{ Number($json.from_date.split('-')[0]) }}},\n      \"CustomDateRangeEnd\":   {\"Day\": {{ Number($json.to_date.split('-')[2]) }},   \"Month\": {{ Number($json.to_date.split('-')[1]) }},   \"Year\": {{ Number($json.to_date.split('-')[0]) }}},\n      \"ReportTimeZone\": \"OsakaSapporoTokyo\"\n    }\n  }\n}",
+        "options": {}
+      },
+      "id": "8179025c-47fe-4dec-9999-ee89b2503d58",
+      "name": "Submit Backfill Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -880,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 60
+      },
+      "id": "7d28105c-7609-402b-bf1b-309ecbadb106",
+      "name": "Wait 60s (initial, larger range needs more time)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -656,
+        112
+      ],
+      "webhookId": "97f787bc-3281-4521-ac1d-7c6ddb1a6522"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://reporting.api.bingads.microsoft.com/Reporting/v13/GenerateReport/Poll",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Set: OAuth Context').item.json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "DeveloperToken",
+              "value": "={{ $('Set: Date Range (EDIT BEFORE EACH RUN)').item.json.developer_token }}"
+            },
+            {
+              "name": "CustomerId",
+              "value": "={{ $('Set: Date Range (EDIT BEFORE EACH RUN)').item.json.customer_id }}"
+            },
+            {
+              "name": "CustomerAccountId",
+              "value": "={{ $('Set: Date Range (EDIT BEFORE EACH RUN)').item.json.account_id }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"ReportRequestId\": \"{{ $('Submit Backfill Report').item.json.ReportRequestId }}\"\n}",
+        "options": {}
+      },
+      "id": "a1232e24-86d3-4c22-ae5c-b42534f25346",
+      "name": "Poll Report Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -448,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ReportRequestStatus.Status }}",
+              "rightValue": "Success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4c48c152-796c-4a11-be82-c63af4367d25",
+      "name": "If Status = Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 60
+      },
+      "id": "caba4afc-442d-4806-b0d2-74c98d83429b",
+      "name": "Wait 60s (retry)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -224,
+        288
+      ],
+      "webhookId": "9c0c06cb-3e30-4abb-86bf-cbdca04f24b0"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Poll Report Status').item.json.ReportRequestStatus.ReportDownloadUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "74f01a80-e828-49e4-932b-30b920b44c86",
+      "name": "Download Report (zip)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "55e1a4c9-eed3-4f6f-8b02-25d33e394465",
+      "name": "Decompress ZIP",
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        112,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Microsoft Ads CampaignPerformanceReport CSV (backfill) を解凍済 binary から読み取って正規化\n// n8n cloud は filesystem モードのため this.helpers.getBinaryDataBuffer を使用\n\nconst rows = [];\nconst now = new Date().toISOString();\nconst items = $input.all();\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  if (!item.binary) continue;\n  const key = Object.keys(item.binary)[0];\n\n  const buffer = await this.helpers.getBinaryDataBuffer(i, key);\n  const csvText = buffer.toString('utf-8');\n  if (!csvText) continue;\n\n  const lines = csvText.split(/\\r?\\n/);\n  let headerIdx = -1;\n  for (let j = 0; j < lines.length; j++) {\n    if (lines[j].includes('TimePeriod') && lines[j].includes('CampaignId')) {\n      headerIdx = j;\n      break;\n    }\n  }\n  if (headerIdx < 0) continue;\n\n  const header = lines[headerIdx].split(',').map(h => h.trim().replace(/\"/g, ''));\n  const colIndex = (name) => header.findIndex(h => h.toLowerCase() === name.toLowerCase());\n\n  const idxDate = colIndex('TimePeriod');\n  const idxCampaignId = colIndex('CampaignId');\n  const idxCampaignName = colIndex('CampaignName');\n  const idxCampaignType = colIndex('CampaignType');\n  const idxImps = colIndex('Impressions');\n  const idxClicks = colIndex('Clicks');\n  const idxSpend = colIndex('Spend');\n  const idxConversions = colIndex('Conversions');\n  const idxRevenue = colIndex('Revenue');\n\n  for (let k = headerIdx + 1; k < lines.length; k++) {\n    const line = lines[k].trim();\n    if (!line) continue;\n    const fields = line.split(',').map(f => f.trim().replace(/^\"|\"$/g, ''));\n    if (!fields[idxCampaignId]) continue;\n\n    rows.push({\n      date: fields[idxDate],\n      campaign_id: fields[idxCampaignId],\n      campaign_name: idxCampaignName >= 0 ? (fields[idxCampaignName] || null) : null,\n      campaign_type: idxCampaignType >= 0 ? (fields[idxCampaignType] || null) : null,\n      ad_group_id: null,\n      impressions: idxImps >= 0 ? Number(fields[idxImps]) : null,\n      clicks: idxClicks >= 0 ? Number(fields[idxClicks]) : null,\n      cost: idxSpend >= 0 ? Math.round(Number(fields[idxSpend])) : null,\n      conversions: idxConversions >= 0 ? Number(fields[idxConversions]) : null,\n      revenue: idxRevenue >= 0 ? Math.round(Number(fields[idxRevenue])) : null,\n      inserted_at: now\n    });\n  }\n}\n\nreturn rows.map(json => ({ json }));\n"
+      },
+      "id": "dc26869b-9453-4d09-8b8b-ae124c80a279",
+      "name": "Parse CSV → Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "raw",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "ec_microsoft_ads",
+          "cachedResultName": "ec_microsoft_ads"
+        },
+        "options": {}
+      },
+      "id": "c9cdb635-1ce1-4d9e-89ba-51d426e0c9ea",
+      "name": "BigQuery: Insert raw.ec_microsoft_ads",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        560,
+        0
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "executeQuery",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "SELECT provider, refresh_token, client_id, client_secret FROM `campwill-ec.raw.oauth_tokens` WHERE provider = 'microsoft_ads' LIMIT 1",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "oauth-bq-read",
+      "name": "BQ Read: oauth_tokens",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        -1300,
+        -100
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "grant_type",
+              "value": "refresh_token"
+            },
+            {
+              "name": "client_id",
+              "value": "={{ $json.client_id }}"
+            },
+            {
+              "name": "client_secret",
+              "value": "={{ $json.client_secret }}"
+            },
+            {
+              "name": "refresh_token",
+              "value": "={{ $json.refresh_token }}"
+            },
+            {
+              "name": "scope",
+              "value": "https://ads.microsoft.com/msads.manage offline_access"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          },
+          "timeout": 30000,
+          "retry": {
+            "enabled": true,
+            "maxRetries": 2,
+            "waitBetweenRetries": 5000
+          }
+        }
+      },
+      "id": "oauth-http-refresh",
+      "name": "HTTP: Refresh Microsoft Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1100,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Microsoft OAuth /token endpoint レスポンス処理\n// - 成功: refresh_token 更新 + history append\n// - 失敗: last_error 更新 + history error append\n// 出力: { status, access_token?, expires_at?, merge_sql }\n//       後続の BQ ノードが merge_sql を実行 / Set OAuth Context が access_token を Set / If OAuth refresh failed が status を判定\n\nconst ROTATED_BY = \"microsoft-ads-backfill\"; // 'microsoft-ads-incremental' or 'microsoft-ads-backfill' に置換\n\nconst httpResp = $input.first().json;\nconst statusCode = httpResp.statusCode;\nconst body = httpResp.body || {};\n\nconst oldToken = $('BQ Read: oauth_tokens').first().json.refresh_token;\nconst clientId = $('BQ Read: oauth_tokens').first().json.client_id || '';\nconst nowIso = new Date().toISOString();\n\nconst esc = (s) => String(s == null ? '' : s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\n\nif (statusCode >= 200 && statusCode < 300 && body.access_token && body.refresh_token) {\n  const newRt = body.refresh_token;\n  const accessToken = body.access_token;\n  const expiresIn = Number(body.expires_in || 3600);\n  const expiresAtIso = new Date(Date.now() + expiresIn * 1000).toISOString();\n  const scope = body.scope || 'https://ads.microsoft.com/msads.manage offline_access';\n\n  const sql = `\nBEGIN\n  MERGE \\`campwill-ec.raw.oauth_tokens\\` T\n  USING (SELECT 'microsoft_ads' AS provider) S\n  ON T.provider = S.provider\n  WHEN MATCHED THEN UPDATE SET\n    refresh_token = '${esc(newRt)}',\n    access_token  = '${esc(accessToken)}',\n    expires_at    = TIMESTAMP('${expiresAtIso}'),\n    scope         = '${esc(scope)}',\n    rotated_at    = TIMESTAMP('${nowIso}'),\n    rotated_by    = '${esc(ROTATED_BY)}',\n    refresh_count = T.refresh_count + 1,\n    last_error    = NULL,\n    last_error_at = NULL,\n    updated_at    = TIMESTAMP('${nowIso}')\n  WHEN NOT MATCHED THEN INSERT\n    (provider, refresh_token, access_token, expires_at, scope, rotated_at, rotated_by, refresh_count, client_id, updated_at)\n  VALUES\n    ('microsoft_ads', '${esc(newRt)}', '${esc(accessToken)}', TIMESTAMP('${expiresAtIso}'), '${esc(scope)}',\n     TIMESTAMP('${nowIso}'), '${esc(ROTATED_BY)}', 1, '${esc(clientId)}', TIMESTAMP('${nowIso}'));\n\n  INSERT INTO \\`campwill-ec.raw.oauth_tokens_history\\`\n    (provider, refresh_token, access_token, expires_at, scope, rotated_at, rotated_by, status, error_message, http_code, recorded_at)\n  VALUES\n    ('microsoft_ads', '${esc(newRt)}', '${esc(accessToken)}', TIMESTAMP('${expiresAtIso}'),\n     '${esc(scope)}', TIMESTAMP('${nowIso}'), '${esc(ROTATED_BY)}', 'success', NULL, ${statusCode}, CURRENT_TIMESTAMP());\nEND;\n`;\n\n  return [{\n    json: {\n      status: 'success',\n      access_token: accessToken,\n      expires_at: expiresAtIso,\n      merge_sql: sql,\n    }\n  }];\n}\n\n// ── 失敗ケース ──\nconst errMessage = (body.error_description || body.error || JSON.stringify(body)).toString().substring(0, 1000);\nconst errCode = body.error || 'unknown';\nconst fullErr = errCode + ': ' + errMessage;\n\nconst sqlErr = `\nBEGIN\n  UPDATE \\`campwill-ec.raw.oauth_tokens\\`\n  SET last_error = '${esc(fullErr)}',\n      last_error_at = TIMESTAMP('${nowIso}'),\n      updated_at = TIMESTAMP('${nowIso}')\n  WHERE provider = 'microsoft_ads';\n\n  INSERT INTO \\`campwill-ec.raw.oauth_tokens_history\\`\n    (provider, refresh_token, rotated_at, rotated_by, status, error_message, http_code, recorded_at)\n  VALUES\n    ('microsoft_ads', '${esc(oldToken)}', TIMESTAMP('${nowIso}'), '${esc(ROTATED_BY)}',\n     'error', '${esc(fullErr)}', ${statusCode || 'NULL'}, CURRENT_TIMESTAMP());\nEND;\n`;\n\nreturn [{\n  json: {\n    status: 'error',\n    error_code: errCode,\n    error_message: errMessage,\n    http_code: statusCode,\n    merge_sql: sqlErr,\n  }\n}];\n"
+      },
+      "id": "oauth-parse",
+      "name": "Code: Parse Refresh Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -900,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "executeQuery",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "={{ $json.merge_sql }}",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "oauth-bq-write",
+      "name": "BQ Write: MERGE oauth_tokens",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        -100
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "oauth_status",
+              "value": "={{ $('Code: Parse Refresh Response').item.json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "access-token",
+              "name": "access_token",
+              "value": "={{ $('Code: Parse Refresh Response').item.json.access_token }}",
+              "type": "string"
+            },
+            {
+              "id": "expires-at",
+              "name": "expires_at",
+              "value": "={{ $('Code: Parse Refresh Response').item.json.expires_at }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "oauth-set-context",
+      "name": "Set: OAuth Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -500,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.oauth_status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "oauth-if-failed",
+      "name": "If: OAuth refresh failed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -300,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "Microsoft Ads OAuth refresh failed. Check raw.oauth_tokens.last_error and raw.oauth_tokens_history. Probably refresh_token revoked - run bootstrap again."
+      },
+      "id": "oauth-throw",
+      "name": "Throw: OAuth refresh dead",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        -100,
+        -200
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "BQ Read: oauth_tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: Date Range (EDIT BEFORE EACH RUN)": {
+      "main": [
+        [
+          {
+            "node": "Submit Backfill Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Backfill Report": {
+      "main": [
+        [
+          {
+            "node": "Wait 60s (initial, larger range needs more time)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 60s (initial, larger range needs more time)": {
+      "main": [
+        [
+          {
+            "node": "Poll Report Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Report Status": {
+      "main": [
+        [
+          {
+            "node": "If Status = Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Status = Success": {
+      "main": [
+        [
+          {
+            "node": "Download Report (zip)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 60s (retry)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 60s (retry)": {
+      "main": [
+        [
+          {
+            "node": "Poll Report Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Report (zip)": {
+      "main": [
+        [
+          {
+            "node": "Decompress ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decompress ZIP": {
+      "main": [
+        [
+          {
+            "node": "Parse CSV → Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CSV → Rows": {
+      "main": [
+        [
+          {
+            "node": "BigQuery: Insert raw.ec_microsoft_ads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BQ Read: oauth_tokens": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Refresh Microsoft Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Refresh Microsoft Token": {
+      "main": [
+        [
+          {
+            "node": "Code: Parse Refresh Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Parse Refresh Response": {
+      "main": [
+        [
+          {
+            "node": "BQ Write: MERGE oauth_tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BQ Write: MERGE oauth_tokens": {
+      "main": [
+        [
+          {
+            "node": "Set: OAuth Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: OAuth Context": {
+      "main": [
+        [
+          {
+            "node": "If: OAuth refresh failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: OAuth refresh failed": {
+      "main": [
+        [
+          {
+            "node": "Throw: OAuth refresh dead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set: Date Range (EDIT BEFORE EACH RUN)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

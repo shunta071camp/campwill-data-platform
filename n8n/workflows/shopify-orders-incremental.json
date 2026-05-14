@@ -1,0 +1,180 @@
+{
+  "name": "shopify-orders-incremental",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 4 * * *"
+            }
+          ]
+        }
+      },
+      "id": "a9c2bf1d-add9-463d-b60e-3d5de86c13de",
+      "name": "Schedule: 4:30 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "SELECT FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', IFNULL(MAX(created_at), TIMESTAMP('2020-01-01'))) AS last_created_at FROM `campwill-ec.raw.ec_shopify_orders`",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "29c50f97-ff0c-4ac4-ba7c-fab135cfde96",
+      "name": "BigQuery: Get Last Sync Timestamp",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "getAll",
+        "returnAll": true,
+        "options": {
+          "createdAtMin": "={{ $json.last_created_at }}",
+          "status": "any"
+        }
+      },
+      "id": "421bc05f-ecd5-4730-ab5c-2ee22ae24273",
+      "name": "Shopify: Get Orders Since Last Sync",
+      "type": "n8n-nodes-base.shopify",
+      "typeVersion": 1,
+      "position": [
+        448,
+        0
+      ],
+      "credentials": {
+        "shopifyOAuth2Api": {
+          "id": "cPc8Q4etwvXhA5vJ",
+          "name": "Shopify Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Flatten Shopify orders into BigQuery raw.ec_shopify_orders rows.\n// Identical transformation to the initial backfill workflow.\n\nconst rows = [];\nconst now = new Date().toISOString();\n\nconst toIntYen = (v) => {\n  if (v === null || v === undefined || v === '') return null;\n  return Math.round(parseFloat(v));\n};\nconst toDate = (iso) => (iso ? iso.split('T')[0] : null);\nconst toStr = (v) => (v === null || v === undefined ? null : String(v));\n\nfor (const item of $input.all()) {\n  const o = item.json;\n\n  let utm_source = null, utm_medium = null, utm_campaign = null;\n  if (o.landing_site) {\n    try {\n      const url = new URL(o.landing_site, 'https://placeholder.invalid');\n      utm_source = url.searchParams.get('utm_source');\n      utm_medium = url.searchParams.get('utm_medium');\n      utm_campaign = url.searchParams.get('utm_campaign');\n    } catch (e) {}\n  }\n\n  const firstRefund = (o.refunds && o.refunds.length > 0) ? o.refunds[0] : null;\n  const is_refunded = firstRefund !== null;\n  const refund_date = firstRefund ? toDate(firstRefund.created_at) : null;\n  const refund_amount = firstRefund\n    ? toIntYen((firstRefund.transactions || []).reduce((s, t) => s + parseFloat(t.amount || '0'), 0))\n    : null;\n  const refund_reason = firstRefund ? (firstRefund.note || null) : null;\n\n  const customer_email = (o.customer && o.customer.email) || o.email || null;\n  if (!customer_email) continue;\n\n  for (const li of (o.line_items || [])) {\n    const lineDiscount = (li.discount_allocations || [])\n      .reduce((s, d) => s + parseFloat(d.amount || '0'), 0);\n    rows.push({\n      order_id: toStr(o.id),\n      order_name: o.name || null,\n      created_at: o.created_at,\n      order_date: toDate(o.created_at),\n      customer_id: o.customer ? toStr(o.customer.id) : null,\n      customer_email: customer_email,\n      financial_status: o.financial_status || null,\n      total_price: toIntYen(o.total_price),\n      subtotal_price: toIntYen(o.subtotal_price),\n      total_discounts: toIntYen(o.total_discounts),\n      total_tax: toIntYen(o.total_tax),\n      line_item_id: toStr(li.id),\n      product_id: li.product_id ? toStr(li.product_id) : null,\n      variant_id: li.variant_id ? toStr(li.variant_id) : null,\n      sku: li.sku || '',\n      sku_title: li.title || null,\n      variant_title: li.variant_title || null,\n      quantity: li.quantity,\n      unit_price: toIntYen(li.price),\n      line_discount: lineDiscount > 0 ? toIntYen(lineDiscount) : null,\n      is_refunded: is_refunded,\n      refund_date: refund_date,\n      refund_amount: refund_amount,\n      refund_reason: refund_reason,\n      source_name: o.source_name || null,\n      landing_site: o.landing_site || null,\n      referring_site: o.referring_site || null,\n      utm_source: utm_source,\n      utm_medium: utm_medium,\n      utm_campaign: utm_campaign,\n      tags: o.tags || null,\n      inserted_at: now\n    });\n  }\n}\n\nreturn rows.map((json) => ({ json }));\n"
+      },
+      "id": "e8c12448-2959-4c96-baa3-b18dff7d1a8c",
+      "name": "Flatten + Transform",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "value": "raw",
+          "mode": "list",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "value": "ec_shopify_orders",
+          "mode": "list",
+          "cachedResultName": "ec_shopify_orders"
+        },
+        "options": {}
+      },
+      "id": "6df31978-bed0-427e-ab81-2edffac27225",
+      "name": "BigQuery: Insert raw.ec_shopify_orders",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: 4:30 AM JST": {
+      "main": [
+        [
+          {
+            "node": "BigQuery: Get Last Sync Timestamp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BigQuery: Get Last Sync Timestamp": {
+      "main": [
+        [
+          {
+            "node": "Shopify: Get Orders Since Last Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify: Get Orders Since Last Sync": {
+      "main": [
+        [
+          {
+            "node": "Flatten + Transform",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten + Transform": {
+      "main": [
+        [
+          {
+            "node": "BigQuery: Insert raw.ec_shopify_orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

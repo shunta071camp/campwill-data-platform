@@ -1,0 +1,240 @@
+{
+  "name": "Instagram Organic - Daily (AM 3:40 JST)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "40 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "Schedule: 3:40 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/v21.0/REPLACE_WITH_IG_BUSINESS_ACCOUNT_ID/media",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "facebookGraphApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,permalink,media_type,timestamp,like_count,comments_count"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ $response.body.paging?.next }}",
+              "limitPagesFetched": false
+            }
+          }
+        }
+      },
+      "id": "ig-list-media",
+      "name": "IG: List Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Meta Graph API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Flatten media list pages into a single array of post metadata items.\n\nconst posts = [];\nfor (const item of $input.all()) {\n  const data = (item.json && item.json.data) || [];\n  for (const p of data) {\n    posts.push(p);\n  }\n}\nreturn posts.map(json => ({ json }));\n"
+      },
+      "id": "flatten-media",
+      "name": "Flatten Media List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.id }}/insights",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "facebookGraphApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "metric",
+              "value": "impressions,reach,saved,total_interactions"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 25,
+              "batchInterval": 1000
+            }
+          }
+        }
+      },
+      "id": "ig-insights",
+      "name": "IG: Get Insights per post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        300
+      ],
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Meta Graph API"
+        }
+      },
+      "notes": "1 メディアごとに Insights API を叩くので、件数が多いとレート制限に注意。batchInterval=1000 で 1秒スロットリング。"
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Combine media metadata + insights into raw.ec_instagram_organic rows.\n// Insights are 'lifetime' totals — record once per day as snapshot.\n//\n// Note: Each insights response is paired with the input media item by index.\n//       We use $('Flatten Media List').all() to get the metadata.\n\nconst now = new Date().toISOString();\nconst todayDate = now.split('T')[0];\nconst metadata = $('Flatten Media List').all();\nconst insightsItems = $input.all();\n\nconst getMetric = (insights, name) => {\n  const m = (insights || []).find(x => x.name === name);\n  if (!m || !m.values || !m.values.length) return null;\n  const v = m.values[0].value;\n  return typeof v === 'number' ? v : (typeof v === 'object' ? null : Number(v));\n};\n\nconst rows = [];\nfor (let i = 0; i < metadata.length && i < insightsItems.length; i++) {\n  const post = metadata[i].json;\n  const insightsResp = (insightsItems[i].json && insightsItems[i].json.data) || [];\n  const impressions = getMetric(insightsResp, 'impressions');\n  const reach = getMetric(insightsResp, 'reach');\n  const saves = getMetric(insightsResp, 'saved');\n  const interactions = getMetric(insightsResp, 'total_interactions');\n  const likes = post.like_count != null ? Number(post.like_count) : null;\n  const comments = post.comments_count != null ? Number(post.comments_count) : null;\n  const engagement_rate = (reach && interactions != null)\n    ? Number((interactions / reach).toFixed(6))\n    : null;\n  rows.push({\n    post_id: String(post.id),\n    date: todayDate,\n    post_url: post.permalink || null,\n    media_type: post.media_type || null,\n    posted_at: post.timestamp || null,\n    impressions: impressions,\n    reach: reach,\n    likes: likes,\n    comments: comments,\n    saves: saves,\n    engagement_rate: engagement_rate,\n    inserted_at: now\n  });\n}\n\nreturn rows.map(json => ({ json }));\n"
+      },
+      "id": "merge",
+      "name": "Merge + Transform",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "ec_instagram_organic"
+        },
+        "dataMode": "autoMapInputData",
+        "options": {}
+      },
+      "id": "bq-insert",
+      "name": "BigQuery: Insert raw.ec_instagram_organic",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        300
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "BigQuery (campwill-ec)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: 3:40 AM JST": {
+      "main": [
+        [
+          {
+            "node": "IG: List Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG: List Media": {
+      "main": [
+        [
+          {
+            "node": "Flatten Media List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten Media List": {
+      "main": [
+        [
+          {
+            "node": "IG: Get Insights per post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IG: Get Insights per post": {
+      "main": [
+        [
+          {
+            "node": "Merge + Transform",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge + Transform": {
+      "main": [
+        [
+          {
+            "node": "BigQuery: Insert raw.ec_instagram_organic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tokyo"
+  },
+  "tags": [
+    "instagram",
+    "raw",
+    "ec"
+  ]
+}

@@ -1,0 +1,13 @@
+[
+  {"name": "fetched_date",      "type": "DATE",      "mode": "REQUIRED", "description": "snapshot 取得日 (JST)"},
+  {"name": "product_id",        "type": "STRING",    "mode": "REQUIRED", "description": "Shopify Product ID (gid から数値部分)"},
+  {"name": "product_title",     "type": "STRING",    "mode": "NULLABLE", "description": "商品名"},
+  {"name": "variant_id",        "type": "STRING",    "mode": "REQUIRED", "description": "Shopify Variant ID"},
+  {"name": "sku",               "type": "STRING",    "mode": "NULLABLE", "description": "SKU コード"},
+  {"name": "variant_title",     "type": "STRING",    "mode": "NULLABLE", "description": "Variant タイトル"},
+  {"name": "price",             "type": "INTEGER",   "mode": "NULLABLE", "description": "販売価格（円）"},
+  {"name": "cost_price",        "type": "INTEGER",   "mode": "NULLABLE", "description": "原価 (Shopify inventoryItem.unitCost.amount)"},
+  {"name": "inventory_item_id", "type": "STRING",    "mode": "NULLABLE", "description": "Inventory Item ID"},
+  {"name": "currency",          "type": "STRING",    "mode": "NULLABLE", "description": "通貨コード (JPY 等)"},
+  {"name": "inserted_at",       "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BQ 挿入時刻"}
+]

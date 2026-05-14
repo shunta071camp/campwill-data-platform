@@ -1,0 +1,5 @@
+[
+  {"name": "valid_from",              "type": "DATE",    "mode": "REQUIRED", "description": "適用開始日"},
+  {"name": "valid_to",                "type": "DATE",    "mode": "REQUIRED", "description": "適用終了日"},
+  {"name": "shipping_fee_per_order",  "type": "INTEGER", "mode": "REQUIRED", "description": "1注文あたり送料（円）・現在1000円"}
+]

@@ -1,0 +1,10 @@
+[
+  {"name": "profile_id",      "type": "STRING",    "mode": "REQUIRED", "description": "KlaviyoプロフィールID（主キー）"},
+  {"name": "email",           "type": "STRING",    "mode": "REQUIRED", "description": "メールアドレス（Shopify結合キー）"},
+  {"name": "first_name",      "type": "STRING",    "mode": "NULLABLE", "description": "名"},
+  {"name": "last_name",       "type": "STRING",    "mode": "NULLABLE", "description": "姓"},
+  {"name": "total_revenue",   "type": "INTEGER",   "mode": "NULLABLE", "description": "Klaviyo経由累計売上（円）"},
+  {"name": "created_at",      "type": "TIMESTAMP", "mode": "NULLABLE", "description": "プロフィール作成日時"},
+  {"name": "updated_at",      "type": "TIMESTAMP", "mode": "NULLABLE", "description": "Klaviyo側プロフィール更新日時（差分取得の起点に使用）"},
+  {"name": "inserted_at",     "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BigQuery挿入日時"}
+]

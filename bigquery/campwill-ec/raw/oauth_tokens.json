@@ -1,0 +1,15 @@
+[
+  {"name": "provider",       "type": "STRING",    "mode": "REQUIRED", "description": "プロバイダ識別子（例: microsoft_ads, yahoo_ads）"},
+  {"name": "refresh_token",  "type": "STRING",    "mode": "REQUIRED", "description": "現行 refresh_token（rotate-on-use 後の最新値）"},
+  {"name": "access_token",   "type": "STRING",    "mode": "NULLABLE", "description": "直近 refresh で得た access_token（cache 用）"},
+  {"name": "expires_at",     "type": "TIMESTAMP", "mode": "NULLABLE", "description": "access_token の expiry (UTC)"},
+  {"name": "scope",          "type": "STRING",    "mode": "NULLABLE", "description": "現在認可されている scope 文字列"},
+  {"name": "rotated_at",     "type": "TIMESTAMP", "mode": "REQUIRED", "description": "refresh_token を最後に書き換えた時刻"},
+  {"name": "rotated_by",     "type": "STRING",    "mode": "NULLABLE", "description": "どのworkflowが書いたか（incremental/backfill/manual）"},
+  {"name": "refresh_count",  "type": "INTEGER",   "mode": "REQUIRED", "description": "累計 refresh 成功回数（デバッグ用）"},
+  {"name": "last_error",     "type": "STRING",    "mode": "NULLABLE", "description": "直近 refresh 失敗のエラー本文（成功時は NULL）"},
+  {"name": "last_error_at",  "type": "TIMESTAMP", "mode": "NULLABLE", "description": "last_error を記録した時刻"},
+  {"name": "client_id",      "type": "STRING",    "mode": "NULLABLE", "description": "Azure App の Application (client) ID"},
+  {"name": "client_secret",  "type": "STRING",    "mode": "NULLABLE", "description": "OAuth client secret（暗号化なし、BQ IAM で保護）"},
+  {"name": "updated_at",     "type": "TIMESTAMP", "mode": "REQUIRED", "description": "この行を最後に書いた時刻"}
+]

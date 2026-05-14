@@ -1,0 +1,10 @@
+[
+  {"name": "customer_id",       "type": "STRING",    "mode": "REQUIRED", "description": "顧客ID（主キー）"},
+  {"name": "email",             "type": "STRING",    "mode": "REQUIRED", "description": "メールアドレス（Klaviyo結合キー）"},
+  {"name": "created_at",        "type": "TIMESTAMP", "mode": "REQUIRED", "description": "初回購入日時"},
+  {"name": "orders_count",      "type": "INTEGER",   "mode": "NULLABLE", "description": "累計注文回数"},
+  {"name": "total_spent",       "type": "INTEGER",   "mode": "NULLABLE", "description": "累計購入金額（円）"},
+  {"name": "accepts_marketing", "type": "BOOLEAN",   "mode": "NULLABLE", "description": "メール受信同意"},
+  {"name": "tags",              "type": "STRING",    "mode": "NULLABLE", "description": "顧客タグ"},
+  {"name": "inserted_at",       "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BigQuery挿入日時"}
+]

@@ -1,0 +1,13 @@
+[
+  {"name": "date",           "type": "DATE",      "mode": "REQUIRED", "description": "日付（主キー1）"},
+  {"name": "campaign_id",    "type": "STRING",    "mode": "REQUIRED", "description": "キャンペーンID（主キー2）"},
+  {"name": "campaign_name",  "type": "STRING",    "mode": "NULLABLE", "description": "キャンペーン名"},
+  {"name": "campaign_type",  "type": "STRING",    "mode": "NULLABLE", "description": "キャンペーンタイプ（SEARCH/SHOPPING/PMAX/DG）"},
+  {"name": "ad_group_id",    "type": "STRING",    "mode": "NULLABLE", "description": "広告グループID"},
+  {"name": "impressions",    "type": "INTEGER",   "mode": "NULLABLE", "description": "インプレッション数"},
+  {"name": "clicks",         "type": "INTEGER",   "mode": "NULLABLE", "description": "クリック数"},
+  {"name": "cost",           "type": "INTEGER",   "mode": "NULLABLE", "description": "広告費（円）"},
+  {"name": "conversions",    "type": "FLOAT",     "mode": "NULLABLE", "description": "CV数"},
+  {"name": "revenue",        "type": "INTEGER",   "mode": "NULLABLE", "description": "売上（円）"},
+  {"name": "inserted_at",    "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BigQuery挿入日時"}
+]

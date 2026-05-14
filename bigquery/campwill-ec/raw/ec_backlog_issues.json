@@ -1,0 +1,14 @@
+[
+  {"name": "issue_id",      "type": "STRING",    "mode": "REQUIRED", "description": "課題ID（主キー）"},
+  {"name": "project_id",    "type": "STRING",    "mode": "NULLABLE", "description": "プロジェクトID"},
+  {"name": "issue_type",    "type": "STRING",    "mode": "NULLABLE", "description": "課題タイプ"},
+  {"name": "title",         "type": "STRING",    "mode": "NULLABLE", "description": "タイトル"},
+  {"name": "status",        "type": "STRING",    "mode": "NULLABLE", "description": "未対応/処理中/完了等"},
+  {"name": "priority",      "type": "STRING",    "mode": "NULLABLE", "description": "優先度"},
+  {"name": "assignee",      "type": "STRING",    "mode": "NULLABLE", "description": "担当者"},
+  {"name": "due_date",      "type": "DATE",      "mode": "NULLABLE", "description": "期限日"},
+  {"name": "created_at",    "type": "TIMESTAMP", "mode": "NULLABLE", "description": "作成日時"},
+  {"name": "updated_at",    "type": "TIMESTAMP", "mode": "NULLABLE", "description": "更新日時"},
+  {"name": "resolved_at",   "type": "TIMESTAMP", "mode": "NULLABLE", "description": "完了日時"},
+  {"name": "inserted_at",   "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BigQuery挿入日時"}
+]

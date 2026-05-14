@@ -1,0 +1,87 @@
+{
+  "name": "Error Handler - Slack #n8n_alert",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [240, 304]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Error Trigger からのデータを整形 + 通知すべきか判定\n// 通知条件:\n//  - mode が 'trigger' (= cron / webhook など本番自動実行) の場合のみ\n//  - mode == 'manual' (UI から手動 Execute) はスキップ\n\nconst e = $input.first().json;\nconst exec = e.execution || {};\nconst wf = e.workflow || {};\nconst err = exec.error || {};\nconst lastNode = err.node && err.node.name ? err.node.name : '(unknown)';\nconst mode = exec.mode || '(unknown)';\nconst execId = exec.id || '?';\nconst execUrl = exec.url || `https://campwill.app.n8n.cloud/workflow/${wf.id}/executions/${execId}`;\n\nconst rawMessage = err.message || '(no message)';\nconst desc = err.description || '';\nconst httpCode = err.httpCode || '';\nconst rawDetail = (err.messages && err.messages[0]) ? String(err.messages[0]).substring(0, 500) : '';\n\nconst now = new Date();\nconst jst = new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19);\n\nconst shouldNotify = mode === 'trigger' || mode === 'webhook' || mode === 'retry';\n\nreturn [{\n  json: {\n    should_notify: shouldNotify,\n    workflow_name: wf.name || '(unknown)',\n    workflow_id: wf.id || '',\n    execution_id: execId,\n    execution_url: execUrl,\n    failed_node: lastNode,\n    mode: mode,\n    error_message: rawMessage,\n    error_description: desc,\n    http_code: httpCode,\n    raw_detail: rawDetail,\n    timestamp_jst: jst,\n    slack_text: `🚨 *n8n Workflow Failed*\\n*Workflow*: ${wf.name || '?'}\\n*Failed node*: ${lastNode}\\n*Error*: ${rawMessage}${httpCode ? ' (HTTP ' + httpCode + ')' : ''}\\n*Time*: ${jst} JST\\n*Mode*: ${mode}\\n*Execution*: ${execUrl}${rawDetail ? '\\n*Detail*: ```' + rawDetail + '```' : ''}`\n  }\n}];\n"
+      },
+      "id": "code-format",
+      "name": "Code: Format Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [464, 304]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "typeValidation": "strict", "version": 1},
+          "conditions": [
+            {
+              "leftValue": "={{ $json.should_notify }}",
+              "rightValue": true,
+              "operator": {"type": "boolean", "operation": "equals"}
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-notify",
+      "name": "If: Should Notify",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [688, 304]
+    },
+    {
+      "parameters": {
+        "authentication": "accessToken",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "D09BB52NBBK",
+          "mode": "id"
+        },
+        "text": "={{ $json.slack_text }}",
+        "otherOptions": {
+          "mrkdwn": true
+        }
+      },
+      "id": "slack-post",
+      "name": "Slack: Post to #n8n_alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [912, 208],
+      "credentials": {
+        "slackApi": {
+          "id": "aq0yDgM1wvPZzhFb",
+          "name": "Slack API（cs_bot）"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [[{"node": "Code: Format Error", "type": "main", "index": 0}]]
+    },
+    "Code: Format Error": {
+      "main": [[{"node": "If: Should Notify", "type": "main", "index": 0}]]
+    },
+    "If: Should Notify": {
+      "main": [
+        [{"node": "Slack: Post to #n8n_alert", "type": "main", "index": 0}],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

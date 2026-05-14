@@ -1,0 +1,85 @@
+{
+  "name": "shopify-products-daily",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "Schedule: 2:00 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 304]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "url": "https://kubell.myshopify.com/admin/api/2025-01/graphql.json",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "Content-Type", "value": "application/json"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"query\": \"{ products(first: 250, query: \\\"status:active\\\") { edges { node { id title variants(first: 100) { edges { node { id sku title price inventoryItem { id unitCost { amount currencyCode } } } } } } } pageInfo { hasNextPage } } }\"}",
+        "options": {"timeout": 60000}
+      },
+      "id": "fetch",
+      "name": "Shopify GraphQL: Fetch Active Products",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [464, 304],
+      "credentials": {
+        "shopifyOAuth2Api": {
+          "id": "cPc8Q4etwvXhA5vJ",
+          "name": "Shopify Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// GraphQL response から products + variants を展開し BQ insert 用 row 配列に\n\nconst resp = $input.first().json;\nconst products = (resp && resp.data && resp.data.products) || {};\nconst edges = products.edges || [];\nconst hasNextPage = products.pageInfo && products.pageInfo.hasNextPage;\n\nif (hasNextPage) {\n  // 250+ products = 拡張が必要 (現状想定 < 100)\n  console.log('WARN: hasNextPage=true, paging not implemented. Some products skipped.');\n}\n\nconst now = new Date().toISOString();\nconst todayJST = new Date(Date.now() + 9*60*60*1000).toISOString().split('T')[0];\nconst rows = [];\n\nfor (const edge of edges) {\n  const p = edge.node;\n  const productId = p.id.replace('gid://shopify/Product/', '');\n  for (const ve of ((p.variants && p.variants.edges) || [])) {\n    const v = ve.node;\n    rows.push({\n      fetched_date: todayJST,\n      product_id: productId,\n      product_title: p.title,\n      variant_id: v.id.replace('gid://shopify/ProductVariant/', ''),\n      sku: v.sku || null,\n      variant_title: v.title || null,\n      price: v.price ? Math.round(parseFloat(v.price)) : null,\n      cost_price: (v.inventoryItem && v.inventoryItem.unitCost && v.inventoryItem.unitCost.amount)\n        ? Math.round(parseFloat(v.inventoryItem.unitCost.amount)) : null,\n      inventory_item_id: v.inventoryItem ? v.inventoryItem.id.replace('gid://shopify/InventoryItem/', '') : null,\n      currency: (v.inventoryItem && v.inventoryItem.unitCost && v.inventoryItem.unitCost.currencyCode) || 'JPY',\n      inserted_at: now\n    });\n  }\n}\n\nreturn rows.map(json => ({ json }));\n"
+      },
+      "id": "parse",
+      "name": "Code: Expand to BQ Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [688, 304]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {"__rl": true, "mode": "list", "value": "campwill-ec", "cachedResultName": "campwill-ec"},
+        "datasetId": {"__rl": true, "mode": "list", "value": "raw", "cachedResultName": "raw"},
+        "tableId":   {"__rl": true, "mode": "list", "value": "ec_shopify_products_daily", "cachedResultName": "ec_shopify_products_daily"},
+        "options": {}
+      },
+      "id": "bq-insert",
+      "name": "BigQuery: Insert raw.ec_shopify_products_daily",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [912, 304],
+      "credentials": {
+        "googleApi": {"id": "WCCQWQHLcPs05bNu", "name": "Google Service Account account（EC）"}
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: 2:00 AM JST": {"main": [[{"node": "Shopify GraphQL: Fetch Active Products", "type": "main", "index": 0}]]},
+    "Shopify GraphQL: Fetch Active Products": {"main": [[{"node": "Code: Expand to BQ Rows", "type": "main", "index": 0}]]},
+    "Code: Expand to BQ Rows": {"main": [[{"node": "BigQuery: Insert raw.ec_shopify_products_daily", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1", "errorWorkflow": "V72FkZBDign2AB1y"}
+}

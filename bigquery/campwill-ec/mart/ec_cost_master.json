@@ -1,0 +1,6 @@
+[
+  {"name": "sku",         "type": "STRING",  "mode": "REQUIRED", "description": "SKUコード（ec_shopify_ordersとの結合キー）"},
+  {"name": "cost_price",  "type": "INTEGER", "mode": "REQUIRED", "description": "単価（円）"},
+  {"name": "valid_from",  "type": "DATE",    "mode": "REQUIRED", "description": "適用開始日"},
+  {"name": "valid_to",    "type": "DATE",    "mode": "REQUIRED", "description": "適用終了日"}
+]
