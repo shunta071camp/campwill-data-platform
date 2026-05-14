@@ -41,6 +41,9 @@ SCHEDULES = [
     ("mart-ec_attribution_first_last", "ec_attribution_first_last.sql", "every day 23:45"),
     ("mart-ec_seo_opportunity",        "ec_seo_opportunity.sql",        "every day 23:50"),
     ("mart-ec_competitor_gap",         "ec_competitor_gap.sql",         "every day 23:55"),
+    # 在庫系 (n8n openlogi-inventory-daily が 05:00 JST = 20:00 UTC に raw 投入後)
+    ("mart-ec_inventory_health",          "ec_inventory_health.sql",          "every day 20:30"),
+    ("mart-ec_storage_cost_estimated",    "ec_storage_cost_estimated.sql",    "every day 20:35"),
 ]
 
 PARENT = f"projects/{PROJECT_NUMBER}/locations/{LOCATION}"

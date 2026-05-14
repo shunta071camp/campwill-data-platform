@@ -1,0 +1,89 @@
+{
+  "name": "openlogi-inventory-daily",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 5 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "Schedule: Daily 5:00 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 304]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "url": "https://api.openlogi.com/items",
+        "method": "GET",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "stock", "value": "1"},
+            {"name": "limit", "value": "200"}
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "X-Api-Version", "value": "1.5"}
+          ]
+        },
+        "options": {"timeout": 60000, "pagination": {"pagination": {"parameters": {"parameters": [{"name": "cursor", "value": "={{ $response.body?.pagination?.next_cursor }}"}]}, "paginationCompleteWhen": "other", "completeExpression": "={{ !$response.body?.pagination?.next_cursor }}"}}
+      },
+      "id": "openlogi-call",
+      "name": "OPENLOGI API: GET /items?stock=1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [464, 304],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME_OPENLOGI_CRED_ID",
+          "name": "OPENLOGI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// OPENLOGI /items?stock=1 のレスポンスを BQ 行に整形\n// 想定レスポンス: { items: [{ id, code, name, stock: { quantity, available, ... } }], pagination: {...} }\n// HTTP node pagination で複数 page まとめて入力されるので flatten\n\nconst now = new Date().toISOString();\nconst todayJST = new Date(Date.now() + 9*60*60*1000).toISOString().split('T')[0];\nconst rows = [];\n\nfor (const input of $input.all()) {\n  const body = input.json || {};\n  const items = Array.isArray(body.items) ? body.items : (Array.isArray(body) ? body : []);\n  for (const it of items) {\n    const stock = it.stock || {};\n    rows.push({\n      snapshot_date: todayJST,\n      item_id:       String(it.id || ''),\n      sku:           it.code || null,\n      item_name:     it.name || null,\n      quantity:      stock.quantity      != null ? Number(stock.quantity)      : null,\n      available:     stock.available     != null ? Number(stock.available)     : null,\n      shipping:      stock.shipping      != null ? Number(stock.shipping)      : null,\n      requesting:    stock.requesting    != null ? Number(stock.requesting)    : null,\n      processing:    stock.processing    != null ? Number(stock.processing)    : null,\n      reserved:      stock.reserved      != null ? Number(stock.reserved)      : null,\n      backordered:   stock.backordered   != null ? Number(stock.backordered)   : null,\n      unallocatable: stock.unallocatable != null ? Number(stock.unallocatable) : null,\n      raw_payload:   JSON.stringify(it),\n      inserted_at:   now\n    });\n  }\n}\n\nreturn rows.map(json => ({ json }));\n"
+      },
+      "id": "flatten",
+      "name": "Code: Flatten to BQ Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [688, 304]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {"__rl": true, "mode": "list", "value": "campwill-ec", "cachedResultName": "campwill-ec"},
+        "datasetId": {"__rl": true, "mode": "list", "value": "raw", "cachedResultName": "raw"},
+        "tableId":   {"__rl": true, "mode": "list", "value": "ec_openlogi_inventory_daily", "cachedResultName": "ec_openlogi_inventory_daily"},
+        "options": {}
+      },
+      "id": "bq-insert",
+      "name": "BigQuery: Insert raw.ec_openlogi_inventory_daily",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [912, 304],
+      "credentials": {
+        "googleApi": {"id": "WCCQWQHLcPs05bNu", "name": "Google Service Account account（EC）"}
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: Daily 5:00 AM JST": {"main": [[{"node": "OPENLOGI API: GET /items?stock=1", "type": "main", "index": 0}]]},
+    "OPENLOGI API: GET /items?stock=1": {"main": [[{"node": "Code: Flatten to BQ Rows", "type": "main", "index": 0}]]},
+    "Code: Flatten to BQ Rows": {"main": [[{"node": "BigQuery: Insert raw.ec_openlogi_inventory_daily", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1", "errorWorkflow": "V72FkZBDign2AB1y"}
+}

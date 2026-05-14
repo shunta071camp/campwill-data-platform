@@ -1,0 +1,16 @@
+[
+  {"name": "snapshot_date",  "type": "DATE",      "mode": "REQUIRED", "description": "スナップショット取得日 (JST)"},
+  {"name": "item_id",        "type": "STRING",    "mode": "REQUIRED", "description": "OPENLOGI item id (内部 ID)"},
+  {"name": "sku",            "type": "STRING",    "mode": "NULLABLE", "description": "顧客側 SKU コード (item.code、Shopify variant.sku と JOIN 想定)"},
+  {"name": "item_name",      "type": "STRING",    "mode": "NULLABLE", "description": "商品名"},
+  {"name": "quantity",       "type": "INTEGER",   "mode": "NULLABLE", "description": "総在庫数 (倉庫内全数)"},
+  {"name": "available",      "type": "INTEGER",   "mode": "NULLABLE", "description": "出荷可能数 (即時引当可能)"},
+  {"name": "shipping",       "type": "INTEGER",   "mode": "NULLABLE", "description": "出荷中"},
+  {"name": "requesting",     "type": "INTEGER",   "mode": "NULLABLE", "description": "出荷依頼中"},
+  {"name": "processing",     "type": "INTEGER",   "mode": "NULLABLE", "description": "作業中 (ピッキング/梱包等)"},
+  {"name": "reserved",       "type": "INTEGER",   "mode": "NULLABLE", "description": "予約引当"},
+  {"name": "backordered",    "type": "INTEGER",   "mode": "NULLABLE", "description": "欠品 (受注したが在庫なし)"},
+  {"name": "unallocatable",  "type": "INTEGER",   "mode": "NULLABLE", "description": "引当不可"},
+  {"name": "raw_payload",    "type": "STRING",    "mode": "NULLABLE", "description": "元 API レスポンス JSON (debug 用、各 item 1 件)"},
+  {"name": "inserted_at",    "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BQ 投入時刻"}
+]

@@ -1,0 +1,11 @@
+sku,size_category,monthly_rate_yen,valid_from,valid_to,notes
+# OPENLOGI 保管料金マスタ (手動メンテ)
+# size_category: S/M/L 等の OPENLOGI 規定サイズ、または "VOLUME_<cm3>" 形式
+# monthly_rate_yen: 1 SKU あたり月額保管料 (税抜)
+# valid_from / valid_to: 料金有効期間
+# valid_to を 9999-12-31 にすると現行料金扱い
+#
+# 例:
+# WARM-001,S,30,2024-01-01,9999-12-31,
+# WARM-002,M,60,2024-01-01,9999-12-31,
+# WARM-003,L,150,2024-01-01,9999-12-31,

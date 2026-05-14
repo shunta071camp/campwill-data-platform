@@ -26,5 +26,8 @@ node_modules/
 # User-filled cost master CSV (contains business data)
 seeds/ec_cost_master.csv
 
+# User-filled OPENLOGI storage rate (実値)
+seeds/ec_openlogi_storage_rate.csv
+
 # Shopify backfill intermediate JSONL files (large, regeneratable)
 scripts/shopify-backfill/data/
