@@ -3,8 +3,9 @@
 #
 # 付与内容:
 #   1. roles/bigquery.jobUser on project (クエリ実行 + 課金)
-#   2. READER on dataset campwill-ec:mart (mart 閲覧)
-#   3. (オプション --with-raw) READER on campwill-ec:raw (PII 含む)
+#   2. roles/serviceusage.serviceUsageConsumer on project (BQ API 利用に必要)
+#   3. READER on dataset campwill-ec:mart (mart 閲覧)
+#   4. (オプション --with-raw) READER on campwill-ec:raw (PII 含む)
 #
 # Usage:
 #   bash scripts/grant-bq-access.sh user@campwill.me
@@ -64,7 +65,7 @@ PYEOF
 echo "=== Granting BQ access for $EMAIL on $PROJECT ==="
 echo ""
 
-echo "[1/2] roles/bigquery.jobUser on project $PROJECT ..."
+echo "[1/3] roles/bigquery.jobUser on project $PROJECT ..."
 gcloud projects add-iam-policy-binding "$PROJECT" \
   --member="user:$EMAIL" \
   --role="roles/bigquery.jobUser" \
@@ -73,7 +74,16 @@ gcloud projects add-iam-policy-binding "$PROJECT" \
 echo "  - Done"
 
 echo ""
-echo "[2/2] READER on $PROJECT:mart ..."
+echo "[2/3] roles/serviceusage.serviceUsageConsumer on project $PROJECT ..."
+gcloud projects add-iam-policy-binding "$PROJECT" \
+  --member="user:$EMAIL" \
+  --role="roles/serviceusage.serviceUsageConsumer" \
+  --condition=None \
+  --quiet >/dev/null
+echo "  - Done"
+
+echo ""
+echo "[3/3] READER on $PROJECT:mart ..."
 grant_dataset_reader "mart"
 
 if [[ "$WITH_RAW" == "--with-raw" ]]; then
