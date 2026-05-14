@@ -37,7 +37,20 @@
             {"name": "X-Api-Version", "value": "1.5"}
           ]
         },
-        "options": {"timeout": 60000, "pagination": {"pagination": {"parameters": {"parameters": [{"name": "cursor", "value": "={{ $response.body?.pagination?.next_cursor }}"}]}, "paginationCompleteWhen": "other", "completeExpression": "={{ !$response.body?.pagination?.next_cursor }}"}}
+        "options": {
+          "timeout": 60000,
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {"name": "cursor", "value": "={{ $response.body?.pagination?.next_cursor }}"}
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body?.pagination?.next_cursor }}"
+            }
+          }
+        }
       },
       "id": "openlogi-call",
       "name": "OPENLOGI API: GET /items?stock=1",
