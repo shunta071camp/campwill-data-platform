@@ -9,7 +9,7 @@
 | GCP プロジェクト | 用途 | 状態 |
 |---|---|---|
 | `campwill-ec` | EC 事業（kubell）— raw 15 + mart 12 テーブル、Scheduled Query 12 本稼働中 | **稼働中** |
-| `campwill-realestate` | 不動産事業（クラスラ） | placeholder |
+| `campwill-realestate` | 不動産事業（クラスラ）— raw 5 + mart 5、自社案件管理 (tenant-leasing) + GA4 + SC | **構築中** |
 | `campwill-central` | 全社横断（Phase 3） | placeholder |
 
 - ロケーション: **`asia-northeast1`**（東京）固定。GA4 Export と一致が必須
@@ -35,6 +35,29 @@
 | `ec_backlog_issues` | Backlog 課題 | |
 | `rakko_inflow_keywords` | ラッコ KW（自社+競合 7URL × 週次） | |
 | `oauth_tokens` / `oauth_tokens_history` | n8n の OAuth refresh_token 管理 | **secret** |
+
+### `campwill-realestate.raw` — 不動産生データ（PII 含む）
+
+| テーブル | 内容 | ソース |
+|---|---|---|
+| `re_tenants` | テナント (=問い合わせ起点) | tenant-leasing `/api/export/tenants` |
+| `re_deals` | 案件 (DealStatus enum) | tenant-leasing `/api/export/deals` |
+| `re_activities` | 活動履歴 | tenant-leasing `/api/export/activities` |
+| `re_properties` | 物件 | tenant-leasing `/api/export/properties` |
+| `re_owners` | オーナー | tenant-leasing `/api/export/owners` |
+| `re_search_console` (VIEW) | krasula.jp の SC | SC Bulk Export |
+
+### `campwill-realestate.mart` — 不動産分析用
+
+| テーブル | 用途 |
+|---|---|
+| `re_lead_funnel` | 日次ファネル: 流入 → 問合せ → 案件化 → 成約 |
+| `re_case_pipeline` | 現時点パイプライン (status 別件数 / 平均経過日数) |
+| `re_seo_inquiry_attribution` | SC 検索クエリ × 問合せ貢献 |
+| `re_property_performance` | 物件別 KPI (案件数 / 成約率 / リードタイム) |
+| `re_weekly_summary` | 週次サマリ + WoW 比較 |
+
+詳細は [bigquery/campwill-realestate/README.md](bigquery/campwill-realestate/README.md) 参照。
 
 ### `campwill-ec.mart` — 分析用集計済データ（PII 除去済、これを使う）
 
