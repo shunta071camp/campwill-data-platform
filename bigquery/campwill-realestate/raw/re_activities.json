@@ -1,0 +1,14 @@
+[
+  {"name": "id",                "type": "INTEGER",   "mode": "REQUIRED", "description": "Activity.id (PK)"},
+  {"name": "deal_id",           "type": "INTEGER",   "mode": "NULLABLE", "description": "関連 Deal.id"},
+  {"name": "property_id",       "type": "INTEGER",   "mode": "NULLABLE", "description": "関連 Property.id"},
+  {"name": "tenant_id",         "type": "INTEGER",   "mode": "NULLABLE", "description": "関連 Tenant.id"},
+  {"name": "owner_id",          "type": "INTEGER",   "mode": "NULLABLE", "description": "関連 Owner.id"},
+  {"name": "activity_type",     "type": "STRING",    "mode": "REQUIRED", "description": "PHONE / EMAIL / VISIT / VIEWING / OTHER"},
+  {"name": "direction",         "type": "STRING",    "mode": "NULLABLE", "description": "INBOUND / OUTBOUND"},
+  {"name": "subject",           "type": "STRING",    "mode": "REQUIRED", "description": "件名"},
+  {"name": "activity_date",     "type": "TIMESTAMP", "mode": "REQUIRED", "description": "活動日時 (UTC)"},
+  {"name": "created_by",        "type": "INTEGER",   "mode": "REQUIRED", "description": "登録者 User.id"},
+  {"name": "created_at",        "type": "TIMESTAMP", "mode": "REQUIRED", "description": "登録時刻 (UTC)"},
+  {"name": "inserted_at",       "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BQ 投入時刻"}
+]
