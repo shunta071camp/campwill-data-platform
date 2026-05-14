@@ -251,7 +251,32 @@ bq query --use_legacy_sql=false --project_id=campwill-ec \
 
 ---
 
-## 4. もし n8n 版に戻したい場合
+## 4. campwill-realestate (krasula.jp) 用 — 同手順
+
+ec と同じ手順で `campwill-realestate` プロジェクト + krasula.jp ドメインに対して設定する。差分のみ:
+
+### GA4 BQ Export (krasula.jp)
+
+- GA4 (krasula.jp プロパティ) 管理画面 → BigQuery のリンク設定
+- リンク先プロジェクト: `campwill-realestate`
+- データセット: `analytics_<id>` (自動命名)
+- ロケーション: `asia-northeast1`
+
+### Search Console Bulk Export (krasula.jp)
+
+§2 と完全に同じ手順、置換するもの:
+- プロジェクト: `campwill-ec` → `campwill-realestate`
+- データセット名: `searchconsole`
+- §2.1 の SA 権限付与は `campwill-realestate` プロジェクトに対して再実行
+- §2.2 のデータセット作成: `bq --location=asia-northeast1 --project_id=campwill-realestate mk --dataset campwill-realestate:searchconsole`
+- §2.3 の Bulk Export 設定で Cloud project ID を `campwill-realestate` に
+- §2.5 の VIEW 作成は `bigquery/campwill-realestate/raw/re_search_console.view.sql` を使用
+
+> 不動産は今回スコープでは Google Ads / Meta Ads は含めない (krasula は基本オーガニック中心)。後 Phase で必要なら §1 / §3 と同じ手順を `campwill-realestate` プロジェクトで踏む。
+
+---
+
+## 5. もし n8n 版に戻したい場合
 
 `bigquery/campwill-ec/raw/ec_google_ads.json` `ec_search_console.json` `ec_meta_ads.json` のテーブルスキーマ JSON は残してあるので、`scripts/create-raw-tables.sh` で物理テーブルを再作成できる。その後 n8n ワークフロー JSON を git history から復元してインポートすれば元に戻せる。
 

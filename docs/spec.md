@@ -445,6 +445,12 @@ ORDER BY week_start DESC;
 
 > 不動産事業のスキーマ詳細は事業データの整備状況に合わせて追加する。
 
+**【2026-05 更新】** Phase 1 実装完了:
+- raw 5 テーブル (`re_tenants` / `re_deals` / `re_activities` / `re_properties` / `re_owners`) + `re_search_console` VIEW
+- mart 5 テーブル (`re_lead_funnel` / `re_case_pipeline` / `re_seo_inquiry_attribution` / `re_property_performance` / `re_weekly_summary`)
+- 案件管理ソース: 自社開発 [tenant-leasing](https://tenant-leasing.onrender.com) (React Router v7 + Prisma + PostgreSQL on Render) の `/api/export/*` を Bearer token で日次 fetch
+- 詳細: [bigquery/campwill-realestate/README.md](../bigquery/campwill-realestate/README.md)
+
 ### 3.3 campwill-central（全社横断）
 
 | データセット | テーブル名 | 内容 |
