@@ -20,26 +20,27 @@ WITH latest_snapshot AS (
   WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM `campwill-ec.raw.ec_openlogi_inventory_daily`)
     AND sku IS NOT NULL
 ),
+-- ec_shopify_orders は 1 line item = 1 row のフラット設計のため UNNEST 不要
 sales_7d AS (
-  SELECT li.sku, SUM(li.quantity) AS sold_7d
-  FROM `campwill-ec.raw.ec_shopify_orders` o, UNNEST(o.line_items) AS li
-  WHERE o.order_date >= DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 7 DAY)
-    AND li.sku IS NOT NULL
-  GROUP BY li.sku
+  SELECT sku, SUM(quantity) AS sold_7d
+  FROM `campwill-ec.raw.ec_shopify_orders`
+  WHERE order_date >= DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 7 DAY)
+    AND sku IS NOT NULL AND sku != ''
+  GROUP BY sku
 ),
 sales_30d AS (
-  SELECT li.sku, SUM(li.quantity) AS sold_30d
-  FROM `campwill-ec.raw.ec_shopify_orders` o, UNNEST(o.line_items) AS li
-  WHERE o.order_date >= DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 30 DAY)
-    AND li.sku IS NOT NULL
-  GROUP BY li.sku
+  SELECT sku, SUM(quantity) AS sold_30d
+  FROM `campwill-ec.raw.ec_shopify_orders`
+  WHERE order_date >= DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 30 DAY)
+    AND sku IS NOT NULL AND sku != ''
+  GROUP BY sku
 ),
 sales_90d AS (
-  SELECT li.sku, SUM(li.quantity) AS sold_90d
-  FROM `campwill-ec.raw.ec_shopify_orders` o, UNNEST(o.line_items) AS li
-  WHERE o.order_date >= DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 90 DAY)
-    AND li.sku IS NOT NULL
-  GROUP BY li.sku
+  SELECT sku, SUM(quantity) AS sold_90d
+  FROM `campwill-ec.raw.ec_shopify_orders`
+  WHERE order_date >= DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 90 DAY)
+    AND sku IS NOT NULL AND sku != ''
+  GROUP BY sku
 )
 SELECT
   s.snapshot_date,
