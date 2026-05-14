@@ -22,7 +22,7 @@
       "parameters": {
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "httpHeaderAuth",
-        "url": "https://api.openlogi.com/items",
+        "url": "https://api.openlogi.com/api/items",
         "method": "GET",
         "sendQuery": true,
         "queryParameters": {
