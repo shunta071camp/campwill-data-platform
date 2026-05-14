@@ -32,13 +32,19 @@ if hasattr(sys.stdout, "reconfigure"):
 EXPORT_API_KEY = (os.environ.get("EXPORT_API_KEY") or "").strip()
 EXPORT_BASE_URL = os.environ.get("EXPORT_BASE_URL", "https://tenant-leasing.onrender.com").rstrip("/")
 
-# 防御: PowerShell 経由で全角空白 / BOM 等が混入していないか
-if EXPORT_API_KEY and not EXPORT_API_KEY.isascii():
+# env が無い / 不正な場合は対話入力に fallback (PowerShell 経由のコピペ事故を回避)
+if not EXPORT_API_KEY:
+    import getpass
+    EXPORT_API_KEY = getpass.getpass("EXPORT_API_KEY (hidden, paste then Enter): ").strip()
+
+if not EXPORT_API_KEY.isascii():
     bad = [(i, c, hex(ord(c))) for i, c in enumerate(EXPORT_API_KEY) if ord(c) > 127]
     raise RuntimeError(
-        f"EXPORT_API_KEY contains non-ASCII characters at: {bad[:5]} ... "
-        "Re-set the env var via `$env:EXPORT_API_KEY = Read-Host` to avoid copy-paste corruption."
+        f"EXPORT_API_KEY contains non-ASCII characters at: {bad[:5]}. "
+        "Paste again from Render Dashboard."
     )
+
+print(f"==> EXPORT_API_KEY length: {len(EXPORT_API_KEY)} (expect 44 for base64-32)")
 PROJECT = "campwill-realestate"
 DATASET = "raw"
 
@@ -98,11 +104,38 @@ def normalize_row(row: dict, inserted_at: str) -> dict:
     return out
 
 
+_BQ_CLIENT = None
+
+
+def get_bq_client():
+    """BQ client を生成 (cached)。
+
+    認証ソース優先順:
+      1. env GOOGLE_APPLICATION_CREDENTIALS_JSON (SA key の JSON 文字列、Render Cron 向け)
+      2. env GOOGLE_APPLICATION_CREDENTIALS (SA key のファイルパス、ローカル向け)
+      3. デフォルト (gcloud auth application-default login)
+    """
+    global _BQ_CLIENT
+    if _BQ_CLIENT is not None:
+        return _BQ_CLIENT
+    from google.cloud import bigquery
+
+    json_creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+    if json_creds:
+        from google.oauth2 import service_account
+        info = json.loads(json_creds)
+        credentials = service_account.Credentials.from_service_account_info(info)
+        _BQ_CLIENT = bigquery.Client(project=PROJECT, credentials=credentials)
+    else:
+        _BQ_CLIENT = bigquery.Client(project=PROJECT)
+    return _BQ_CLIENT
+
+
 def write_to_bq(table_name: str, rows: list[dict]) -> None:
     """raw テーブルを truncate + insert (insert_rows_json で stream)。"""
     from google.cloud import bigquery
 
-    client = bigquery.Client(project=PROJECT)
+    client = get_bq_client()
     fqn = f"{PROJECT}.{DATASET}.{table_name}"
     inserted_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 

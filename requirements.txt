@@ -1,0 +1,4 @@
+# campwill-data-platform Python deps
+# realestate-sync.py 等が利用 (Render Cron Job + ローカル)
+
+google-cloud-bigquery>=3.0,<4.0
