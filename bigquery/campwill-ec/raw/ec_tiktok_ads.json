@@ -1,0 +1,19 @@
+[
+  {"name": "date",           "type": "DATE",      "mode": "REQUIRED", "description": "日付（主キー1、JST 解釈）"},
+  {"name": "advertiser_id",  "type": "STRING",    "mode": "REQUIRED", "description": "TikTok Ads Manager の advertiser ID"},
+  {"name": "campaign_id",    "type": "STRING",    "mode": "REQUIRED", "description": "キャンペーンID（主キー2）"},
+  {"name": "campaign_name",  "type": "STRING",    "mode": "NULLABLE", "description": "キャンペーン名"},
+  {"name": "objective_type", "type": "STRING",    "mode": "NULLABLE", "description": "キャンペーン目的 (TRAFFIC / CONVERSIONS / VIDEO_VIEWS 等)"},
+  {"name": "ad_group_id",    "type": "STRING",    "mode": "NULLABLE", "description": "広告グループID"},
+  {"name": "impressions",    "type": "INTEGER",   "mode": "NULLABLE", "description": "インプレッション数"},
+  {"name": "clicks",         "type": "INTEGER",   "mode": "NULLABLE", "description": "クリック数"},
+  {"name": "cost",           "type": "INTEGER",   "mode": "NULLABLE", "description": "広告費 (JPY、TikTok 側の spend を整数円に丸め)"},
+  {"name": "conversions",    "type": "FLOAT",     "mode": "NULLABLE", "description": "CV 数 (conversion metric)"},
+  {"name": "revenue",        "type": "INTEGER",   "mode": "NULLABLE", "description": "売上 (JPY、total_complete_payment_rate_value 等から)"},
+  {"name": "video_views",    "type": "INTEGER",   "mode": "NULLABLE", "description": "動画再生数 (TikTok 固有 metric)"},
+  {"name": "video_p25_count","type": "INTEGER",   "mode": "NULLABLE", "description": "25% 再生到達数"},
+  {"name": "video_p50_count","type": "INTEGER",   "mode": "NULLABLE", "description": "50% 再生到達数"},
+  {"name": "video_p75_count","type": "INTEGER",   "mode": "NULLABLE", "description": "75% 再生到達数"},
+  {"name": "video_p100_count","type": "INTEGER",  "mode": "NULLABLE", "description": "完全再生数"},
+  {"name": "inserted_at",    "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BigQuery 挿入日時"}
+]

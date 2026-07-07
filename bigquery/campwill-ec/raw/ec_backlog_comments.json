@@ -1,0 +1,10 @@
+[
+  {"name": "comment_id",  "type": "STRING",    "mode": "REQUIRED", "description": "コメントID (主キー)"},
+  {"name": "issue_id",    "type": "STRING",    "mode": "REQUIRED", "description": "親 issue ID"},
+  {"name": "project_id",  "type": "STRING",    "mode": "NULLABLE", "description": "プロジェクトID"},
+  {"name": "author",      "type": "STRING",    "mode": "NULLABLE", "description": "コメント投稿者名"},
+  {"name": "content",     "type": "STRING",    "mode": "NULLABLE", "description": "コメント本文 (最大 50000 字)"},
+  {"name": "created_at",  "type": "TIMESTAMP", "mode": "REQUIRED", "description": "コメント作成日時"},
+  {"name": "updated_at",  "type": "TIMESTAMP", "mode": "NULLABLE", "description": "コメント編集日時"},
+  {"name": "inserted_at", "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BigQuery 挿入日時"}
+]

@@ -1,0 +1,14 @@
+[
+  {"name": "event_id",        "type": "STRING",    "mode": "REQUIRED", "description": "Klaviyo Event ID（主キー）"},
+  {"name": "metric_id",       "type": "STRING",    "mode": "REQUIRED", "description": "Klaviyo Metric ID（Clicked Email 等）"},
+  {"name": "metric_name",     "type": "STRING",    "mode": "NULLABLE", "description": "メトリクス名（人間可読、Clicked Email など）"},
+  {"name": "profile_id",      "type": "STRING",    "mode": "REQUIRED", "description": "Klaviyo Profile ID"},
+  {"name": "email",           "type": "STRING",    "mode": "NULLABLE", "description": "メールアドレス（Shopify 結合キー、PII）"},
+  {"name": "campaign_id",     "type": "STRING",    "mode": "NULLABLE", "description": "Campaign ID（campaign 由来 click のみ、flow click は NULL）"},
+  {"name": "message_id",      "type": "STRING",    "mode": "NULLABLE", "description": "Message ID（個別メッセージ単位）"},
+  {"name": "event_ts",        "type": "TIMESTAMP", "mode": "REQUIRED", "description": "イベント発生日時（UTC、差分取得の起点）"},
+  {"name": "event_date",      "type": "DATE",      "mode": "REQUIRED", "description": "イベント日付（JST、集計用 partition キー）"},
+  {"name": "url",             "type": "STRING",    "mode": "NULLABLE", "description": "Click 先 URL"},
+  {"name": "properties_json", "type": "STRING",    "mode": "NULLABLE", "description": "イベント属性全量（JSON 文字列、デバッグ用）"},
+  {"name": "inserted_at",     "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BigQuery 挿入日時（dedup view で最新行採用に使用）"}
+]

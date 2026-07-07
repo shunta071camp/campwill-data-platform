@@ -1,0 +1,23 @@
+[
+  {"name": "snapshot_date",           "type": "DATE",      "mode": "REQUIRED", "description": "取得日 (JST)。同日複数回取得時の最新行採用に使用"},
+  {"name": "url",                     "type": "STRING",    "mode": "REQUIRED", "description": "対象 URL (CrUX API queryHistoryRecord の url)"},
+  {"name": "form_factor",             "type": "STRING",    "mode": "NULLABLE", "description": "PHONE / DESKTOP / TABLET / ALL_FORM_FACTORS (省略時は ALL)"},
+  {"name": "collection_period_start", "type": "DATE",      "mode": "REQUIRED", "description": "CrUX 集計窓開始日 (28日 rolling 中の 1 日分)"},
+  {"name": "collection_period_end",   "type": "DATE",      "mode": "REQUIRED", "description": "CrUX 集計窓終了日"},
+  {"name": "lcp_p75_ms",              "type": "INT64",     "mode": "NULLABLE", "description": "Largest Contentful Paint 75 percentile (ミリ秒)"},
+  {"name": "lcp_good_density",        "type": "FLOAT64",   "mode": "NULLABLE", "description": "LCP < 2500ms の比率 (0-1)"},
+  {"name": "lcp_ni_density",          "type": "FLOAT64",   "mode": "NULLABLE", "description": "LCP needs-improvement (2500-4000ms) 比率"},
+  {"name": "lcp_poor_density",        "type": "FLOAT64",   "mode": "NULLABLE", "description": "LCP poor (>= 4000ms) 比率"},
+  {"name": "inp_p75_ms",              "type": "INT64",     "mode": "NULLABLE", "description": "Interaction to Next Paint 75 percentile (ミリ秒)"},
+  {"name": "inp_good_density",        "type": "FLOAT64",   "mode": "NULLABLE", "description": "INP < 200ms 比率"},
+  {"name": "inp_ni_density",          "type": "FLOAT64",   "mode": "NULLABLE", "description": "INP needs-improvement (200-500ms) 比率"},
+  {"name": "inp_poor_density",        "type": "FLOAT64",   "mode": "NULLABLE", "description": "INP poor (>= 500ms) 比率"},
+  {"name": "cls_p75",                 "type": "FLOAT64",   "mode": "NULLABLE", "description": "Cumulative Layout Shift 75 percentile"},
+  {"name": "cls_good_density",        "type": "FLOAT64",   "mode": "NULLABLE", "description": "CLS < 0.1 比率"},
+  {"name": "cls_ni_density",          "type": "FLOAT64",   "mode": "NULLABLE", "description": "CLS needs-improvement (0.1-0.25) 比率"},
+  {"name": "cls_poor_density",        "type": "FLOAT64",   "mode": "NULLABLE", "description": "CLS poor (>= 0.25) 比率"},
+  {"name": "fcp_p75_ms",              "type": "INT64",     "mode": "NULLABLE", "description": "First Contentful Paint 75 percentile (ミリ秒)"},
+  {"name": "ttfb_p75_ms",             "type": "INT64",     "mode": "NULLABLE", "description": "Time to First Byte 75 percentile (ミリ秒)"},
+  {"name": "raw_payload",             "type": "STRING",    "mode": "NULLABLE", "description": "API レスポンス JSON (デバッグ用、上限 100KB)"},
+  {"name": "inserted_at",             "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BQ 挿入時刻"}
+]
