@@ -1,0 +1,29 @@
+# Cloud Run のソースアップロードから除外
+
+# git / VCS
+.git/
+.gitignore
+
+# Python キャッシュ
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# ローカル開発
+.env
+.env.*
+venv/
+.venv/
+
+# ドキュメント
+README.md
+
+# キー (絶対にビルドコンテキストに含めない)
+*.json
+*.pem
+*.key
