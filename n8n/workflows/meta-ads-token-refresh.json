@@ -1,0 +1,263 @@
+{
+  "name": "Meta Ads - Token Refresh (Wed AM 4:00 JST)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 4 * * 3"
+            }
+          ]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "Schedule: Wed 4:00 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "notes": "毎週水曜 04:00 JST に fb_exchange_token で refresh (旧 token は無効化されないので冪等・安全)"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "SELECT access_token AS old_token, client_id, client_secret, expires_at FROM `campwill-ec.raw.oauth_tokens` WHERE provider = 'meta_ads' LIMIT 1",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "bq-read-token",
+      "name": "BQ Read: Meta OAuth Token",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.facebook.com/v21.0/oauth/access_token",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "grant_type",
+              "value": "fb_exchange_token"
+            },
+            {
+              "name": "client_id",
+              "value": "={{ $json.client_id }}"
+            },
+            {
+              "name": "client_secret",
+              "value": "={{ $json.client_secret }}"
+            },
+            {
+              "name": "fb_exchange_token",
+              "value": "={{ $json.old_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "http-exchange",
+      "name": "Meta: fb_exchange_token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Meta の response には expires_in が入らない System User の場合があるので、\n// debug_token で新 token の expires_at を確認して確実な値を取る。\n// 出力: { new_token, client_id_secret_app_token }\nconst body = $input.first().json;\nif (body.error || !body.access_token) {\n  throw new Error('fb_exchange_token failed: ' + JSON.stringify(body).substring(0, 500));\n}\nconst tokenRow = $('BQ Read: Meta OAuth Token').first().json;\nreturn [{\n  json: {\n    new_token: body.access_token,\n    old_token: tokenRow.old_token,\n    client_id: tokenRow.client_id,\n    client_secret: tokenRow.client_secret,\n    app_token: `${tokenRow.client_id}|${tokenRow.client_secret}`,\n    // Meta の response の expires_in を fallback として保持 (System User では null が多い)\n    expires_in_fallback: body.expires_in || null\n  }\n}];\n"
+      },
+      "id": "parse-exchange",
+      "name": "Parse fb_exchange_token response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.facebook.com/v21.0/debug_token",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "input_token",
+              "value": "={{ $json.new_token }}"
+            },
+            {
+              "name": "access_token",
+              "value": "={{ $json.app_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "http-debug",
+      "name": "Meta: debug_token (get expires_at)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// debug_token response から expires_at を取得し、merge_sql を組み立てる。\nconst debugResp = $input.first().json;\nconst ctx = $('Parse fb_exchange_token response').first().json;\nconst newToken = ctx.new_token;\nconst oldToken = ctx.old_token;\n\nlet expiresAtSec = null;\nif (debugResp.data && debugResp.data.expires_at) {\n  expiresAtSec = Number(debugResp.data.expires_at);\n} else if (ctx.expires_in_fallback) {\n  expiresAtSec = Math.floor(Date.now() / 1000) + Number(ctx.expires_in_fallback);\n} else {\n  // 情報無ければ 60 日後と仮定\n  expiresAtSec = Math.floor(Date.now() / 1000) + 60 * 24 * 3600;\n}\nconst expiresAtIso = new Date(expiresAtSec * 1000).toISOString();\nconst nowIso = new Date().toISOString();\n\nconst esc = (s) => String(s == null ? '' : s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"\\\\'\");\n\nconst mergeSql = `\nBEGIN\n  UPDATE \\`campwill-ec.raw.oauth_tokens\\`\n  SET\n    access_token   = '${esc(newToken)}',\n    refresh_token  = '${esc(newToken)}',\n    expires_at     = TIMESTAMP('${expiresAtIso}'),\n    rotated_at     = TIMESTAMP('${nowIso}'),\n    rotated_by     = 'meta-ads-token-refresh',\n    refresh_count  = refresh_count + 1,\n    last_error     = NULL,\n    last_error_at  = NULL,\n    updated_at     = TIMESTAMP('${nowIso}')\n  WHERE provider = 'meta_ads';\n\n  INSERT INTO \\`campwill-ec.raw.oauth_tokens_history\\`\n    (provider, refresh_token, access_token, expires_at, scope, rotated_at, rotated_by, status, error_message, http_code, recorded_at)\n  VALUES\n    ('meta_ads', '${esc(newToken)}', '${esc(newToken)}', TIMESTAMP('${expiresAtIso}'),\n     'ads_read', TIMESTAMP('${nowIso}'), 'meta-ads-token-refresh', 'success', NULL, 200, CURRENT_TIMESTAMP());\nEND;\n`;\n\nconsole.log(`Refreshed. new expires_at=${expiresAtIso}, token head=${newToken.substring(0, 15)}`);\n\nreturn [{\n  json: {\n    status: 'success',\n    new_expires_at: expiresAtIso,\n    merge_sql: mergeSql\n  }\n}];\n"
+      },
+      "id": "build-merge",
+      "name": "Build MERGE SQL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "={{ $json.merge_sql }}",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "bq-write",
+      "name": "BQ Write: MERGE oauth_tokens",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: Wed 4:00 AM JST": {
+      "main": [
+        [
+          {
+            "node": "BQ Read: Meta OAuth Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BQ Read: Meta OAuth Token": {
+      "main": [
+        [
+          {
+            "node": "Meta: fb_exchange_token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta: fb_exchange_token": {
+      "main": [
+        [
+          {
+            "node": "Parse fb_exchange_token response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse fb_exchange_token response": {
+      "main": [
+        [
+          {
+            "node": "Meta: debug_token (get expires_at)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta: debug_token (get expires_at)": {
+      "main": [
+        [
+          {
+            "node": "Build MERGE SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build MERGE SQL": {
+      "main": [
+        [
+          {
+            "node": "BQ Write: MERGE oauth_tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,17 @@
+[
+  {"name": "DateStart",       "type": "DATE",      "mode": "REQUIRED", "description": "日付 (主キー1)"},
+  {"name": "AdAccountId",     "type": "STRING",    "mode": "REQUIRED", "description": "Ad account ID"},
+  {"name": "CampaignId",      "type": "STRING",    "mode": "NULLABLE", "description": "キャンペーンID"},
+  {"name": "AdSetId",         "type": "STRING",    "mode": "NULLABLE", "description": "広告セットID"},
+  {"name": "AdId",            "type": "STRING",    "mode": "REQUIRED", "description": "広告ID (主キー2)"},
+  {"name": "ActionType",      "type": "STRING",    "mode": "REQUIRED", "description": "アクション種別 (主キー3、例: link_click / onsite_conversion.purchase / post_engagement)"},
+  {"name": "ActionCollection","type": "STRING",    "mode": "NULLABLE", "description": "'Actions' 固定 (BQ DTS 互換性のため)"},
+  {"name": "ActionValue",     "type": "INTEGER",   "mode": "NULLABLE", "description": "アクション合計値 (attribution window default)"},
+  {"name": "Action1dClick",   "type": "STRING",    "mode": "NULLABLE", "description": "1 day click attribution 値 (BQ DTS 型互換で STRING)"},
+  {"name": "Action1dView",    "type": "STRING",    "mode": "NULLABLE", "description": "1 day view attribution 値"},
+  {"name": "Action7dClick",   "type": "STRING",    "mode": "NULLABLE", "description": "7 day click attribution 値"},
+  {"name": "Action7dView",    "type": "STRING",    "mode": "NULLABLE", "description": "7 day view attribution 値"},
+  {"name": "Action28dClick",  "type": "STRING",    "mode": "NULLABLE", "description": "28 day click attribution 値"},
+  {"name": "Action28dView",   "type": "STRING",    "mode": "NULLABLE", "description": "28 day view attribution 値"},
+  {"name": "inserted_at",     "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BQ 投入日時"}
+]

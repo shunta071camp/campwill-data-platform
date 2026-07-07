@@ -1,0 +1,403 @@
+{
+  "name": "Meta Ads - Daily (AM 5:15 JST)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 5 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "Schedule: 5:15 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "SELECT access_token, JSON_VALUE(metadata, '$.ad_account_id') AS ad_account_id, expires_at FROM `campwill-ec.raw.oauth_tokens` WHERE provider = 'meta_ads' LIMIT 1",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "bq-read-token",
+      "name": "BQ Read: Meta OAuth Token",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Yesterday (JST) を time_range として組み立てる。\n// last_error 系の考慮は refresh workflow 側でやる。ここは token が有効前提。\n\nconst row = $input.first().json;\nconst token = row.access_token;\nconst adAccountId = row.ad_account_id;\nif (!token) throw new Error('access_token missing from raw.oauth_tokens (provider=meta_ads)');\nif (!adAccountId) throw new Error('ad_account_id missing from raw.oauth_tokens metadata');\n\n// JST の昨日\nconst nowUtc = new Date();\nconst nowJst = new Date(nowUtc.getTime() + 9 * 3600 * 1000);\nconst yestJst = new Date(nowJst.getTime() - 24 * 3600 * 1000);\nconst yyyy = yestJst.getUTCFullYear();\nconst mm = String(yestJst.getUTCMonth() + 1).padStart(2, '0');\nconst dd = String(yestJst.getUTCDate()).padStart(2, '0');\nconst dateStr = `${yyyy}-${mm}-${dd}`;\n\nreturn [{\n  json: {\n    access_token: token,\n    ad_account_id: adAccountId,\n    date: dateStr,\n    time_range: JSON.stringify({ since: dateStr, until: dateStr })\n  }\n}];\n"
+      },
+      "id": "set-context",
+      "name": "Set Context (Yesterday JST)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/v21.0/act_{{ $json.ad_account_id }}/insights",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $json.access_token }}"
+            },
+            {
+              "name": "level",
+              "value": "ad"
+            },
+            {
+              "name": "time_range",
+              "value": "={{ $json.time_range }}"
+            },
+            {
+              "name": "time_increment",
+              "value": "1"
+            },
+            {
+              "name": "fields",
+              "value": "campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,objective,buying_type,account_currency,impressions,clicks,spend,reach,frequency,cpc,cpm,cpp,ctr,unique_clicks,unique_ctr,inline_link_clicks,inline_post_engagement,outbound_clicks,actions"
+            },
+            {
+              "name": "action_attribution_windows",
+              "value": "['1d_click','1d_view','7d_click','7d_view','28d_click','28d_view']"
+            },
+            {
+              "name": "limit",
+              "value": "500"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "http-insights",
+      "name": "Meta: /act_XXX/insights",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// Meta insights response を 2 系統に分解:\n//  - insights_rows: raw.ec_meta_ads_insights 用 (1 ad 1 row)\n//  - action_rows:   raw.ec_meta_ads_insights_actions 用 (1 ad × action_type 1 row)\n// エラーレスポンス (data 無し) は fail-fast する\n\nconst ctx = $('Set Context (Yesterday JST)').first().json;\nconst adAccountId = ctx.ad_account_id;\nconst dateStr = ctx.date;\nconst now = new Date().toISOString();\n\nconst resp = $input.first().json;\nif (resp.error) {\n  throw new Error(`Meta API error: ${JSON.stringify(resp.error).substring(0, 500)}`);\n}\nconst data = resp.data || [];\n\nconst toNum = (v) => (v === null || v === undefined || v === '') ? null : Number(v);\nconst toStr = (v) => (v === null || v === undefined) ? null : String(v);\n\nconst insightsRows = [];\nconst actionRows = [];\n\nfor (const r of data) {\n  insightsRows.push({\n    DateStart: dateStr,\n    AdAccountId: adAccountId,\n    CampaignId: toStr(r.campaign_id),\n    CampaignName: r.campaign_name || null,\n    AdSetId: toStr(r.adset_id),\n    AdSetName: r.adset_name || null,\n    AdId: toStr(r.ad_id),\n    AdName: r.ad_name || null,\n    Objective: r.objective || null,\n    BuyingType: r.buying_type || null,\n    Impressions: toNum(r.impressions),\n    Clicks: toNum(r.clicks),\n    Spend: toNum(r.spend),\n    Reach: toNum(r.reach),\n    Frequency: toNum(r.frequency),\n    CPC: toNum(r.cpc),\n    CPM: toNum(r.cpm),\n    CPP: toNum(r.cpp),\n    CTR: toNum(r.ctr),\n    UniqueClicks: toNum(r.unique_clicks),\n    UniqueCTR: toNum(r.unique_ctr),\n    InlineLinkClicks: toNum(r.inline_link_clicks),\n    InlinePostEngagement: toNum(r.inline_post_engagement),\n    OutboundClicks: (r.outbound_clicks || []).reduce((s, x) => s + Number(x.value || 0), 0) || null,\n    Level: 'ad',\n    AccountCurrency: r.account_currency || null,\n    inserted_at: now\n  });\n\n  for (const a of (r.actions || [])) {\n    actionRows.push({\n      DateStart: dateStr,\n      AdAccountId: adAccountId,\n      CampaignId: toStr(r.campaign_id),\n      AdSetId: toStr(r.adset_id),\n      AdId: toStr(r.ad_id),\n      ActionType: a.action_type,\n      ActionCollection: 'Actions',\n      ActionValue: toNum(a.value),\n      Action1dClick: toStr(a['1d_click']),\n      Action1dView: toStr(a['1d_view']),\n      Action7dClick: toStr(a['7d_click']),\n      Action7dView: toStr(a['7d_view']),\n      Action28dClick: toStr(a['28d_click']),\n      Action28dView: toStr(a['28d_view']),\n      inserted_at: now\n    });\n  }\n}\n\nconsole.log(`fetched ${insightsRows.length} insights rows, ${actionRows.length} action rows for ${dateStr}`);\n\n// 出力: pair 情報を tag で区別\nreturn [\n  ...insightsRows.map(json => ({ json: { ...json, _target: 'insights' } })),\n  ...actionRows.map(json => ({ json: { ...json, _target: 'actions' } }))\n];\n"
+      },
+      "id": "flatten",
+      "name": "Flatten (insights + actions)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json._target }}",
+                    "rightValue": "insights",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json._target }}",
+                    "rightValue": "actions",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch-target",
+      "name": "Split: insights vs actions",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// _target 列を落として BQ 挿入用 payload だけにする\nreturn $input.all().map(item => {\n  const { _target, ...rest } = item.json;\n  return { json: rest };\n});\n"
+      },
+      "id": "strip-tag-a",
+      "name": "Strip tag (insights)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "// _target 列を落として BQ 挿入用 payload だけにする\nreturn $input.all().map(item => {\n  const { _target, ...rest } = item.json;\n  return { json: rest };\n});\n"
+      },
+      "id": "strip-tag-b",
+      "name": "Strip tag (actions)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "value": "raw",
+          "mode": "list",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "value": "ec_meta_ads_insights",
+          "mode": "list",
+          "cachedResultName": "ec_meta_ads_insights"
+        },
+        "options": {}
+      },
+      "id": "bq-insert-insights",
+      "name": "BQ Insert: ec_meta_ads_insights",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        -120
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "value": "raw",
+          "mode": "list",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "value": "ec_meta_ads_insights_actions",
+          "mode": "list",
+          "cachedResultName": "ec_meta_ads_insights_actions"
+        },
+        "options": {}
+      },
+      "id": "bq-insert-actions",
+      "name": "BQ Insert: ec_meta_ads_insights_actions",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        120
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: 5:15 AM JST": {
+      "main": [
+        [
+          {
+            "node": "BQ Read: Meta OAuth Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BQ Read: Meta OAuth Token": {
+      "main": [
+        [
+          {
+            "node": "Set Context (Yesterday JST)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Context (Yesterday JST)": {
+      "main": [
+        [
+          {
+            "node": "Meta: /act_XXX/insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta: /act_XXX/insights": {
+      "main": [
+        [
+          {
+            "node": "Flatten (insights + actions)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten (insights + actions)": {
+      "main": [
+        [
+          {
+            "node": "Split: insights vs actions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split: insights vs actions": {
+      "main": [
+        [
+          {
+            "node": "Strip tag (insights)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Strip tag (actions)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strip tag (insights)": {
+      "main": [
+        [
+          {
+            "node": "BQ Insert: ec_meta_ads_insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strip tag (actions)": {
+      "main": [
+        [
+          {
+            "node": "BQ Insert: ec_meta_ads_insights_actions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
