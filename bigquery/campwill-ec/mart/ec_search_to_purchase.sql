@@ -15,14 +15,24 @@ WITH sc_monthly AS (
   WHERE query IS NOT NULL AND url IS NOT NULL
   GROUP BY year_month, sc_query, sc_path
 ),
+-- raw.ec_shopify_orders は line_item grain のため order 単位 dedup してから SUM
+orders_dedup AS (
+  SELECT
+    order_id,
+    ANY_VALUE(order_date)                            AS order_date,
+    ANY_VALUE(landing_site)                          AS landing_site,
+    ANY_VALUE(total_price)                           AS total_price
+  FROM `campwill-ec.raw.ec_shopify_orders`
+  WHERE landing_site IS NOT NULL
+  GROUP BY order_id
+),
 shopify_monthly AS (
   SELECT
     DATE_TRUNC(order_date, MONTH)                                  AS year_month,
     REGEXP_EXTRACT(landing_site, r'^([^?]+)')                       AS shopify_path,
     COUNT(DISTINCT order_id)                                        AS orders,
     SUM(total_price)                                                AS revenue
-  FROM `campwill-ec.raw.ec_shopify_orders`
-  WHERE landing_site IS NOT NULL
+  FROM orders_dedup
   GROUP BY year_month, shopify_path
 )
 SELECT

@@ -1,13 +1,24 @@
 -- mart.ec_cohort_ltv: コホート月 × 経過月の累計 LTV / リテンション
 -- 顧客の初回購入月で cohort 化し、経過月ごとの累計売上 / アクティブ顧客率を集計
+--
+-- 注意: raw.ec_shopify_orders は line_item grain のため SUM(total_price) 前に order 単位 dedup 必須
 
 CREATE OR REPLACE TABLE `campwill-ec.mart.ec_cohort_ltv` AS
-WITH first_order AS (
+WITH orders_dedup AS (
+  SELECT
+    order_id,
+    ANY_VALUE(customer_email) AS customer_email,
+    ANY_VALUE(order_date)     AS order_date,
+    ANY_VALUE(total_price)    AS total_price
+  FROM `campwill-ec.raw.ec_shopify_orders`
+  WHERE customer_email IS NOT NULL
+  GROUP BY order_id
+),
+first_order AS (
   SELECT
     customer_email,
     DATE_TRUNC(MIN(order_date), MONTH) AS cohort_month
-  FROM `campwill-ec.raw.ec_shopify_orders`
-  WHERE customer_email IS NOT NULL
+  FROM orders_dedup
   GROUP BY customer_email
 ),
 cohort_sizes AS (
@@ -22,9 +33,8 @@ orders_by_cohort_month AS (
     COUNT(DISTINCT o.customer_email)                                  AS active_customers,
     COUNT(DISTINCT o.order_id)                                        AS month_orders,
     SUM(o.total_price)                                                AS month_revenue
-  FROM `campwill-ec.raw.ec_shopify_orders` o
+  FROM orders_dedup o
   JOIN first_order f USING (customer_email)
-  WHERE o.customer_email IS NOT NULL
   GROUP BY f.cohort_month, months_since_first
 ),
 with_cumulative AS (

@@ -43,8 +43,12 @@ SELECT
   -- 推定機会: vol × CTR(top3=10%) × CV率(1.5%) × AOV
   ROUND(
     IFNULL(c.search_volume, 0) * 0.10 * 0.015 *
-    (SELECT ROUND(AVG(total_price)) FROM `campwill-ec.raw.ec_shopify_orders`
-     WHERE order_date >= DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 30 DAY))
+    -- raw.ec_shopify_orders は line_item grain のため order 単位 dedup してから AVG
+    (SELECT ROUND(AVG(total_price)) FROM (
+       SELECT ANY_VALUE(total_price) AS total_price
+       FROM `campwill-ec.raw.ec_shopify_orders`
+       WHERE order_date >= DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 30 DAY)
+       GROUP BY order_id))
   ) AS estimated_monthly_opportunity_yen,
   CURRENT_TIMESTAMP() AS generated_at
 FROM competitor_kw c

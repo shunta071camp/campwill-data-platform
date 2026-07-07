@@ -15,13 +15,19 @@
 -- CV率は仮定 1.5% (Shopify 業界平均)
 
 CREATE OR REPLACE TABLE `campwill-ec.mart.ec_seo_opportunity` AS
-WITH aov AS (
+WITH orders_dedup AS (
+  -- raw.ec_shopify_orders は line_item grain のため order 単位に dedup してから AVG
+  SELECT order_id, ANY_VALUE(total_price) AS total_price, ANY_VALUE(order_date) AS order_date
+  FROM `campwill-ec.raw.ec_shopify_orders`
+  WHERE order_date >= DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 30 DAY)
+  GROUP BY order_id
+),
+aov AS (
   -- 直近 30 日の平均注文単価
   SELECT
     ROUND(AVG(total_price)) AS avg_order_value,
     1.5 AS cv_rate_pct
-  FROM `campwill-ec.raw.ec_shopify_orders`
-  WHERE order_date >= DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 30 DAY)
+  FROM orders_dedup
 ),
 sc_recent AS (
   -- 直近 30 日の SC データ

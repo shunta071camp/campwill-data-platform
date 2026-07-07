@@ -1,6 +1,13 @@
 -- mart.ec_daily_pnl: 日次粗利テーブル
 -- 1注文 × 1SKU = 1行で粗利・実質粗利・粗利率を計算する。
 --
+-- ⚠️ **line-grain 設計上の注意 (SUM/AVG 時に必読)**:
+--   - `revenue` 列は order.total_price (order-level) を全 SKU 行に複製している
+--   - `SUM(revenue) GROUP BY order_date` は line 数分過大集計 (avg x1.35 倍)
+--   - 正しい方法: `SELECT order_date, SUM(revenue) FROM (SELECT DISTINCT order_id, order_date, revenue FROM ec_daily_pnl) GROUP BY order_date`
+--   - あるいは line-level 実質売上が必要なら `unit_price * quantity - line_discount` を別途計算する
+--   - 同様に gross_profit / actual_gross_profit も line 単位で意味を成さない (SKU 別 cost - order 全体 revenue)
+--
 -- 運用前提:
 --   - mart.ec_shipping_rules は同時に「1行のみ有効」であることが必須。
 --     送料を変更する場合は古い行の valid_to を更新してから新行を追加する。
