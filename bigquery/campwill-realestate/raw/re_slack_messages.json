@@ -1,0 +1,15 @@
+[
+  {"name": "message_ts",      "type": "STRING",    "mode": "REQUIRED", "description": "主キー: <channel_id>:<ts> 連結"},
+  {"name": "channel_id",      "type": "STRING",    "mode": "REQUIRED", "description": "Slack channel ID (C0XXXX)"},
+  {"name": "channel_name",    "type": "STRING",    "mode": "NULLABLE", "description": "チャネル名 (#general 等)"},
+  {"name": "user_id",         "type": "STRING",    "mode": "NULLABLE", "description": "発言者の Slack user ID (UXXXX)"},
+  {"name": "user_name",       "type": "STRING",    "mode": "NULLABLE", "description": "発言者の表示名 (lookup)"},
+  {"name": "text",            "type": "STRING",    "mode": "NULLABLE", "description": "メッセージ本文 (markdown 含む)"},
+  {"name": "thread_ts",       "type": "STRING",    "mode": "NULLABLE", "description": "スレッド親 message の ts"},
+  {"name": "is_thread_reply", "type": "BOOL",      "mode": "NULLABLE", "description": "スレッドへの返信か"},
+  {"name": "reactions_json",  "type": "STRING",    "mode": "NULLABLE", "description": "リアクション配列 JSON 文字列化"},
+  {"name": "permalink",       "type": "STRING",    "mode": "NULLABLE", "description": "Slack 上の URL"},
+  {"name": "posted_at",       "type": "TIMESTAMP", "mode": "REQUIRED", "description": "投稿日時 (UTC)"},
+  {"name": "posted_date",     "type": "DATE",      "mode": "REQUIRED", "description": "投稿日 (JST、partition 用)"},
+  {"name": "inserted_at",     "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BigQuery 挿入日時"}
+]

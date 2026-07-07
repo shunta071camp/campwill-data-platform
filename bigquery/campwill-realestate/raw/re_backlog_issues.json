@@ -1,0 +1,17 @@
+[
+  {"name": "issue_id",    "type": "STRING",    "mode": "REQUIRED", "description": "Backlog 課題 ID (主キー)"},
+  {"name": "project_id",  "type": "STRING",    "mode": "NULLABLE", "description": "Backlog project ID"},
+  {"name": "issue_type",  "type": "STRING",    "mode": "NULLABLE", "description": "種別名"},
+  {"name": "title",       "type": "STRING",    "mode": "NULLABLE", "description": "件名"},
+  {"name": "description", "type": "STRING",    "mode": "NULLABLE", "description": "本文 (URL 抽出に使用、最大 50000 文字 truncate)"},
+  {"name": "status",      "type": "STRING",    "mode": "NULLABLE", "description": "未対応/処理中/完了等"},
+  {"name": "priority",    "type": "STRING",    "mode": "NULLABLE", "description": "優先度名"},
+  {"name": "assignee",    "type": "STRING",    "mode": "NULLABLE", "description": "担当者名"},
+  {"name": "due_date",    "type": "DATE",      "mode": "NULLABLE", "description": "期日"},
+  {"name": "created_at",  "type": "TIMESTAMP", "mode": "NULLABLE", "description": "作成日時"},
+  {"name": "updated_at",  "type": "TIMESTAMP", "mode": "NULLABLE", "description": "更新日時"},
+  {"name": "resolved_at", "type": "TIMESTAMP", "mode": "NULLABLE", "description": "完了日時"},
+  {"name": "status_changed_at", "type": "TIMESTAMP", "mode": "NULLABLE", "description": "最終 status 変更日時 (/activities type=2 から)"},
+  {"name": "last_comment_at",   "type": "TIMESTAMP", "mode": "NULLABLE", "description": "最終コメント追加日時 (/activities type=3 から)"},
+  {"name": "inserted_at", "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BigQuery 挿入日時"}
+]
