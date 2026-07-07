@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 720"
+     font-family="'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif">
+  <defs>
+    <marker id="arrBlue" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <path d="M0,0 L10,3 L0,6 Z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrOrange" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <path d="M0,0 L10,3 L0,6 Z" fill="#d97706"/>
+    </marker>
+    <marker id="arrGreen" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <path d="M0,0 L10,3 L0,6 Z" fill="#047857"/>
+    </marker>
+    <marker id="arrGray" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <path d="M0,0 L10,3 L0,6 Z" fill="#6b7280"/>
+    </marker>
+  </defs>
+
+  <!-- BG -->
+  <rect width="1100" height="720" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="550" y="50" text-anchor="middle" font-size="26" font-weight="bold" fill="#111827">
+    BigQuery 作業環境（中村さん）
+  </text>
+  <text x="550" y="80" text-anchor="middle" font-size="15" fill="#6b7280">
+    作業はすべて sandbox_nakamura で。mart / raw は SELECT のみで読む
+  </text>
+
+  <!-- ============ 中村さん (左) ============ -->
+  <g transform="translate(60, 280)">
+    <circle cx="60" cy="40" r="32" fill="#e5e7eb" stroke="#9ca3af" stroke-width="2"/>
+    <path d="M 25,110 Q 25,72 60,72 Q 95,72 95,110 L 95,140 L 25,140 Z"
+          fill="#e5e7eb" stroke="#9ca3af" stroke-width="2"/>
+    <text x="60" y="170" text-anchor="middle" font-size="16" font-weight="bold" fill="#111827">中村さん</text>
+    <text x="60" y="190" text-anchor="middle" font-size="12" fill="#6b7280">h_nakamura</text>
+  </g>
+
+  <!-- ============ mart (上、青) ============ -->
+  <g transform="translate(380, 130)">
+    <rect width="340" height="130" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+    <text x="170" y="35" text-anchor="middle" font-size="20" font-weight="bold" fill="#1e40af">
+      📚 mart
+    </text>
+    <text x="170" y="60" text-anchor="middle" font-size="13" fill="#1e3a8a">
+      全社共有のデータ書庫（PII ゼロ）
+    </text>
+    <text x="170" y="80" text-anchor="middle" font-size="12" fill="#1e3a8a">
+      ec_order_enriched / ec_order_line_enriched 他 20+
+    </text>
+    <rect x="100" y="95" width="140" height="22" rx="4" fill="#2563eb"/>
+    <text x="170" y="111" text-anchor="middle" font-size="13" font-weight="bold" fill="white">READER (読むだけ)</text>
+  </g>
+
+  <!-- ============ sandbox (中央、緑、強調) ============ -->
+  <g transform="translate(380, 295)">
+    <rect width="340" height="170" rx="12" fill="#d1fae5" stroke="#047857" stroke-width="4"/>
+    <text x="170" y="38" text-anchor="middle" font-size="22" font-weight="bold" fill="#065f46">
+      ⭐ sandbox_nakamura
+    </text>
+    <text x="170" y="62" text-anchor="middle" font-size="14" font-weight="bold" fill="#065f46">
+      中村さん専用の作業デスク
+    </text>
+    <text x="170" y="88" text-anchor="middle" font-size="13" fill="#065f46">
+      派生 mart / 個人 dashboard / 実験 SQL
+    </text>
+    <text x="170" y="108" text-anchor="middle" font-size="13" fill="#065f46">
+      CSV upload / Scheduled Query
+    </text>
+    <rect x="80" y="125" width="180" height="26" rx="4" fill="#047857"/>
+    <text x="170" y="143" text-anchor="middle" font-size="14" font-weight="bold" fill="white">OWNER (何でも自由)</text>
+  </g>
+
+  <!-- ============ raw (下、橙) ============ -->
+  <g transform="translate(380, 500)">
+    <rect width="340" height="130" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+    <text x="170" y="35" text-anchor="middle" font-size="20" font-weight="bold" fill="#92400e">
+      🗄️ raw
+    </text>
+    <text x="170" y="58" text-anchor="middle" font-size="13" fill="#78350f">
+      原データ倉庫（PII / 認証情報あり）
+    </text>
+    <text x="170" y="78" text-anchor="middle" font-size="12" fill="#78350f">
+      Shopify 注文 / Klaviyo / 広告原票 / oauth_tokens
+    </text>
+    <rect x="100" y="95" width="140" height="22" rx="4" fill="#d97706"/>
+    <text x="170" y="111" text-anchor="middle" font-size="13" font-weight="bold" fill="white">READER (慎重に)</text>
+  </g>
+
+  <!-- ============ 矢印: 中村→sandbox (作業) ============ -->
+  <path d="M 200 370 L 370 370" stroke="#047857" stroke-width="3" fill="none" marker-end="url(#arrGreen)"/>
+  <text x="285" y="358" text-anchor="middle" font-size="14" font-weight="bold" fill="#047857">
+    ここで作業
+  </text>
+
+  <!-- ============ 矢印: mart → sandbox (読む) ============ -->
+  <path d="M 550 260 L 550 295" stroke="#2563eb" stroke-width="3" fill="none" marker-end="url(#arrBlue)"/>
+  <text x="560" y="285" font-size="13" fill="#2563eb">読む</text>
+
+  <!-- ============ 矢印: raw → sandbox (読む、慎重) ============ -->
+  <path d="M 550 500 L 550 465" stroke="#d97706" stroke-width="3" fill="none" marker-end="url(#arrOrange)"/>
+  <text x="560" y="490" font-size="13" fill="#d97706">読む</text>
+
+  <!-- ============ 出力先 (右) ============ -->
+  <g transform="translate(800, 280)">
+    <rect width="240" height="200" rx="12" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2"/>
+    <text x="120" y="35" text-anchor="middle" font-size="17" font-weight="bold" fill="#374151">
+      sandbox の活用先
+    </text>
+    <text x="120" y="68" text-anchor="middle" font-size="14" fill="#374151">📊 Looker Studio</text>
+    <text x="120" y="98" text-anchor="middle" font-size="14" fill="#374151">📋 Spreadsheet 連携</text>
+    <text x="120" y="128" text-anchor="middle" font-size="14" fill="#374151">⏰ 自分用 Scheduled Query</text>
+    <text x="120" y="158" text-anchor="middle" font-size="14" fill="#374151">💬 Slack / メール通知</text>
+    <text x="120" y="188" text-anchor="middle" font-size="13" fill="#6b7280" font-style="italic">本人だけ。共有も可</text>
+  </g>
+
+  <!-- ============ 矢印: sandbox → 出力先 ============ -->
+  <path d="M 720 380 L 800 380" stroke="#047857" stroke-width="3" fill="none" marker-end="url(#arrGreen)"/>
+  <text x="760" y="370" text-anchor="middle" font-size="12" fill="#047857">出力</text>
+
+  <!-- ============ 凡例下 ============ -->
+  <g transform="translate(60, 660)">
+    <text x="0" y="0" font-size="13" fill="#374151" font-weight="bold">運用ルール:</text>
+    <text x="0" y="22" font-size="13" fill="#374151">
+      ① 普段は sandbox で作業　② mart / raw は SELECT のみ　③ 安定運用する分析になったら宮崎へ連絡→本番 mart に昇格
+    </text>
+    <text x="0" y="42" font-size="12" fill="#dc2626" font-weight="bold">
+      ⚠ raw.oauth_tokens には n8n 認証情報が plaintext。外部に貼らない / Slack に流さない
+    </text>
+  </g>
+</svg>
