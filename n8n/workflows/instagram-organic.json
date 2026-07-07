@@ -24,7 +24,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://graph.facebook.com/v21.0/REPLACE_WITH_IG_BUSINESS_ACCOUNT_ID/media",
+        "url": "=https://graph.facebook.com/v21.0/17841444808634930/media",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "facebookGraphApi",
         "sendQuery": true,
@@ -36,18 +36,17 @@
             },
             {
               "name": "limit",
-              "value": "100"
+              "value": "80"
+            },
+            {
+              "name": "since",
+              "value": "={{ Math.floor((Date.now() - 30 * 24 * 3600 * 1000) / 1000) }}"
             }
           ]
         },
         "options": {
-          "pagination": {
-            "pagination": {
-              "paginationMode": "responseContainsNextURL",
-              "nextURL": "={{ $response.body.paging?.next }}",
-              "limitPagesFetched": false
-            }
-          }
+          "response": {"response": {"responseFormat": "json", "neverError": true}},
+          "timeout": 30000
         }
       },
       "id": "ig-list-media",
@@ -60,7 +59,7 @@
       ],
       "credentials": {
         "facebookGraphApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "id": "VOMMwXygQzrJi9AT",
           "name": "Meta Graph API"
         }
       }
@@ -90,17 +89,19 @@
           "parameters": [
             {
               "name": "metric",
-              "value": "impressions,reach,saved,total_interactions"
+              "value": "reach,saved,total_interactions,views"
             }
           ]
         },
         "options": {
           "batching": {
             "batch": {
-              "batchSize": 25,
-              "batchInterval": 1000
+              "batchSize": 5,
+              "batchInterval": 2000
             }
-          }
+          },
+          "response": {"response": {"responseFormat": "json", "neverError": true}},
+          "timeout": 30000
         }
       },
       "id": "ig-insights",
@@ -113,7 +114,7 @@
       ],
       "credentials": {
         "facebookGraphApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "id": "VOMMwXygQzrJi9AT",
           "name": "Meta Graph API"
         }
       },
@@ -122,7 +123,7 @@
     {
       "parameters": {
         "language": "javaScript",
-        "jsCode": "// Combine media metadata + insights into raw.ec_instagram_organic rows.\n// Insights are 'lifetime' totals — record once per day as snapshot.\n//\n// Note: Each insights response is paired with the input media item by index.\n//       We use $('Flatten Media List').all() to get the metadata.\n\nconst now = new Date().toISOString();\nconst todayDate = now.split('T')[0];\nconst metadata = $('Flatten Media List').all();\nconst insightsItems = $input.all();\n\nconst getMetric = (insights, name) => {\n  const m = (insights || []).find(x => x.name === name);\n  if (!m || !m.values || !m.values.length) return null;\n  const v = m.values[0].value;\n  return typeof v === 'number' ? v : (typeof v === 'object' ? null : Number(v));\n};\n\nconst rows = [];\nfor (let i = 0; i < metadata.length && i < insightsItems.length; i++) {\n  const post = metadata[i].json;\n  const insightsResp = (insightsItems[i].json && insightsItems[i].json.data) || [];\n  const impressions = getMetric(insightsResp, 'impressions');\n  const reach = getMetric(insightsResp, 'reach');\n  const saves = getMetric(insightsResp, 'saved');\n  const interactions = getMetric(insightsResp, 'total_interactions');\n  const likes = post.like_count != null ? Number(post.like_count) : null;\n  const comments = post.comments_count != null ? Number(post.comments_count) : null;\n  const engagement_rate = (reach && interactions != null)\n    ? Number((interactions / reach).toFixed(6))\n    : null;\n  rows.push({\n    post_id: String(post.id),\n    date: todayDate,\n    post_url: post.permalink || null,\n    media_type: post.media_type || null,\n    posted_at: post.timestamp || null,\n    impressions: impressions,\n    reach: reach,\n    likes: likes,\n    comments: comments,\n    saves: saves,\n    engagement_rate: engagement_rate,\n    inserted_at: now\n  });\n}\n\nreturn rows.map(json => ({ json }));\n"
+        "jsCode": "// Combine media metadata + insights into raw.ec_instagram_organic rows.\n// metric=reach,saved,total_interactions,views (impressions は Reels で deprecated → views で代替)\nconst now = new Date().toISOString();\nconst todayDate = now.split('T')[0];\nconst metadata = $('Flatten Media List').all();\nconst insightsItems = $input.all();\n\nconst getMetric = (insights, name) => {\n  const m = (insights || []).find(x => x.name === name);\n  if (!m || !m.values || !m.values.length) return null;\n  const v = m.values[0].value;\n  return typeof v === 'number' ? v : (typeof v === 'object' ? null : Number(v));\n};\n\n// Meta の timestamp '+0000' → BQ で読める ISO 8601 (Z 付き) に変換\nconst normalizeTs = (ts) => {\n  if (!ts) return null;\n  // 例: '2026-06-09T09:04:25+0000' → '2026-06-09T09:04:25Z'\n  return ts.replace(/\\+0000$/, 'Z').replace(/([+-]\\d{2})(\\d{2})$/, '$1:$2');\n};\n\nconst rows = [];\nfor (let i = 0; i < metadata.length && i < insightsItems.length; i++) {\n  const post = metadata[i].json;\n  const respJson = insightsItems[i].json || {};\n  // エラーレスポンスなら data 無し\n  const insightsResp = (respJson.data) || [];\n  const reach = getMetric(insightsResp, 'reach');\n  const saves = getMetric(insightsResp, 'saved');\n  const interactions = getMetric(insightsResp, 'total_interactions');\n  const views = getMetric(insightsResp, 'views');  // Reels の表示回数 (impressions 代替)\n  const likes = post.like_count != null ? Number(post.like_count) : null;\n  const comments = post.comments_count != null ? Number(post.comments_count) : null;\n  const engagement_rate = (reach && interactions != null)\n    ? Number((interactions / reach).toFixed(6))\n    : null;\n  rows.push({\n    post_id: String(post.id),\n    date: todayDate,\n    post_url: post.permalink || null,\n    media_type: post.media_type || null,\n    posted_at: normalizeTs(post.timestamp),\n    impressions: views,  // 既存 column 'impressions' に views を格納 (Reels の表示回数)\n    reach: reach,\n    likes: likes,\n    comments: comments,\n    saves: saves,\n    engagement_rate: engagement_rate,\n    inserted_at: now\n  });\n}\n\nreturn rows.map(json => ({ json }));\n"
       },
       "id": "merge",
       "name": "Merge + Transform",
@@ -164,8 +165,8 @@
       ],
       "credentials": {
         "googleApi": {
-          "id": "REPLACE_WITH_CREDENTIAL_ID",
-          "name": "BigQuery (campwill-ec)"
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
         }
       }
     }

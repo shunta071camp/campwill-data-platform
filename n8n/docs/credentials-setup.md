@@ -313,3 +313,43 @@ Meta Ads は BQ DTS に切替えたが、**Instagram オーガニック投稿の
 1. Credentials → New → `Slack API`
 2. Access Token: `xoxb-...`
 3. Name: `Slack (campwill)`
+
+---
+
+## 11. Microsoft Clarity (UX 解析)
+
+`clarity-metrics-daily` ワークフローが Clarity Data Export API を叩くための認証。**Project 単位の Bearer token**（永続）。
+
+### Step A: Clarity Project API token 発行
+
+1. [Clarity ダッシュボード](https://clarity.microsoft.com/) で kubell.com の Project を開く
+2. 左下 **Settings** → **Data Export** → **Generate new API token**
+3. 用途: `n8n ETL`（メモ用）
+4. 生成された token をコピー（**1 度しか表示されない**ので即時保存）
+
+### Step B: n8n に登録
+
+1. n8n UI → Credentials → **New** → 検索 **`Header Auth`**
+2. **Header Auth** を選択
+3. 入力:
+   - **Name**: `Microsoft Clarity API`
+   - **Header Name**: `Authorization`
+   - **Header Value**: `Bearer <Step A の token>`
+4. Save
+5. ワークフロー `clarity-metrics-daily` の HTTP Request ノードで本 Credential を選択
+
+### API 制約
+
+| 項目 | 値 |
+|---|---|
+| Endpoint | `https://www.clarity.ms/export-data/api/v1/project-live-insights` |
+| Rate limit | docs は 10/day、実測 **~5/day**（実装は安全側で 3/day 運用） |
+| 遡及範囲 | 最大 3 日（`numOfDays=1` 推奨で日次蓄積） |
+| 1 call の dimension 数 | 最大 3 |
+
+> 現行ワークフローは 3 calls/day（OVERALL / URL / Source+Device）で構成。当初 4 calls/day（+ Browser+OS+Country）だったが、実測 quota が docs 表記より厳しく 429 を踏んだため削減。dimension 増やす場合は単発 curl で残数確認を。
+
+### Token ローテーション
+
+- Token は永続（Microsoft 側に明示的な期限なし）
+- 漏洩時は Clarity Settings → Data Export → 既存 token を Revoke → 新規発行 → n8n credential 更新

@@ -3,6 +3,7 @@
   {"name": "project_id",    "type": "STRING",    "mode": "NULLABLE", "description": "プロジェクトID"},
   {"name": "issue_type",    "type": "STRING",    "mode": "NULLABLE", "description": "課題タイプ"},
   {"name": "title",         "type": "STRING",    "mode": "NULLABLE", "description": "タイトル"},
+  {"name": "description",   "type": "STRING",    "mode": "NULLABLE", "description": "本文 (URL 抽出に使用、最大 50000 文字 truncate)"},
   {"name": "status",        "type": "STRING",    "mode": "NULLABLE", "description": "未対応/処理中/完了等"},
   {"name": "priority",      "type": "STRING",    "mode": "NULLABLE", "description": "優先度"},
   {"name": "assignee",      "type": "STRING",    "mode": "NULLABLE", "description": "担当者"},
@@ -10,5 +11,7 @@
   {"name": "created_at",    "type": "TIMESTAMP", "mode": "NULLABLE", "description": "作成日時"},
   {"name": "updated_at",    "type": "TIMESTAMP", "mode": "NULLABLE", "description": "更新日時"},
   {"name": "resolved_at",   "type": "TIMESTAMP", "mode": "NULLABLE", "description": "完了日時"},
+  {"name": "status_changed_at", "type": "TIMESTAMP", "mode": "NULLABLE", "description": "最終 status 変更日時 (/activities type=2 から)"},
+  {"name": "last_comment_at",   "type": "TIMESTAMP", "mode": "NULLABLE", "description": "最終コメント追加日時 (/activities type=3 から)"},
   {"name": "inserted_at",   "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BigQuery挿入日時"}
 ]

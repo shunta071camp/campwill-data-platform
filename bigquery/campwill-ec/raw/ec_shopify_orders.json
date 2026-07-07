@@ -29,6 +29,7 @@
   {"name": "utm_source",      "type": "STRING",    "mode": "NULLABLE", "description": "UTM source（パース済み）"},
   {"name": "utm_medium",      "type": "STRING",    "mode": "NULLABLE", "description": "UTM medium（パース済み）"},
   {"name": "utm_campaign",    "type": "STRING",    "mode": "NULLABLE", "description": "UTM campaign（パース済み）"},
+  {"name": "utm_content",     "type": "STRING",    "mode": "NULLABLE", "description": "UTM content（広告バナー識別子、パース済み）"},
   {"name": "tags",            "type": "STRING",    "mode": "NULLABLE", "description": "注文タグ"},
   {"name": "inserted_at",     "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BigQuery挿入日時"}
 ]

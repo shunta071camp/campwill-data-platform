@@ -37,6 +37,11 @@ SCHEDULES = [
     ("re-seo_inquiry_attribution",  "re_seo_inquiry_attribution.sql",  "every day 20:10"),
     ("re-property_performance",     "re_property_performance.sql",     "every day 20:15"),
     ("re-weekly_summary",           "re_weekly_summary.sql",           "every day 20:20"),
+    # 施策自動記録 (Claude API 出力直後 = 03:26 JST、効果検証は re_lead_funnel 後 = 05:30 JST)
+    ("re-initiatives",                       "re_initiatives.sql",                       "every day 18:26"),
+    ("re-initiative_results",                "re_initiative_results.sql",                "every day 20:30"),
+    # 個別記事 SEO 効果分析 (re_initiative_results 直後 = 05:35 JST、article_url マッピング済の施策のみ)
+    ("re-seo_article_initiative_results",    "re_seo_article_initiative_results.sql",    "every day 20:35"),
 ]
 
 BASE_URL = "https://bigquerydatatransfer.googleapis.com/v1"

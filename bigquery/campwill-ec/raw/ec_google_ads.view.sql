@@ -1,42 +1,32 @@
 -- raw.ec_google_ads VIEW: Google Ads BQ Data Transfer Service tables から派生
 --
--- データ投入は GCP の BigQuery Data Transfer Service (BQ DTS) で自動化されている。
--- DTS が作る Campaign + CampaignBasicStats を JOIN して、既存の raw.ec_google_ads
--- スキーマ（仕様書 §3.1 raw.ec_google_ads）に合わせて SELECT する VIEW。
+-- データソース: campwill-ec.google_ads.ads_AccountBasicStats_5312357691
+--   (BQ DTS が自動で日次取り込み、customer_id = 5312357691)
 --
--- これにより mart.ec_channel_roi 等の下流 SQL は無変更で動く。
+-- 設計判断 (2026-05-19 修正):
+--   旧版は ads_CampaignBasicStats × ads_Campaign の INNER JOIN だったが、
+--   Campaign メタテーブルの履歴開始日が新しく、それより古い stats date が落ちて
+--   cost が約 10x 過小計上 (¥1.92M → ¥186K) になっていた。
+--   downstream で campaign_id / campaign_name を使う箇所が無かったので
+--   AccountBasicStats ベースに切替: 1 row/date、campaign-level 列は NULL。
 --
--- 設定方法:
---   1. n8n/docs/native-bq-integrations.md の手順で BQ DTS を有効化
---   2. データセット名と Customer ID（10桁、ハイフン除く）を確認
---   3. 下記 <REPLACE_DATASET_SUFFIX> と 5312357691 を置換
---      例: dataset name が "google_ads" で customer_id が 1234567890 の場合
---          google_ads.CampaignBasicStats_1234567890
---   4. bq query --use_legacy_sql=false < ec_google_ads.view.sql で VIEW 作成
+--   campaign 別ブレイクダウンが必要になった時点で、CampaignBasicStats を
+--   正しく dedup した別 view (ec_google_ads_by_campaign) を別途追加する方針。
 --
--- 注意:
---   - DTS は ad_group 粒度のテーブル (AdGroupBasicStats) も別途持つので、ad_group_id が
---     必要なら別 view を作るか、本 VIEW の SELECT を AdGroupBasicStats ベースに変える
---   - Campaign テーブルは SCD（履歴）形式なので、最新行を QUALIFY で取る
+-- 検証: SUM(cost) の 30d 値が Google Ads 管理画面の月次総支出と一致 (約 ¥1.92M)
 
 CREATE OR REPLACE VIEW `campwill-ec.raw.ec_google_ads` AS
 SELECT
-  s._DATA_DATE                                          AS date,
-  CAST(c.campaign_id AS STRING)                         AS campaign_id,
-  c.campaign_name                                       AS campaign_name,
-  c.campaign_advertising_channel_type                   AS campaign_type,
+  _DATA_DATE                                            AS date,
+  CAST(NULL AS STRING)                                  AS campaign_id,
+  CAST(NULL AS STRING)                                  AS campaign_name,
+  CAST(NULL AS STRING)                                  AS campaign_type,
   CAST(NULL AS STRING)                                  AS ad_group_id,
-  s.metrics_impressions                                 AS impressions,
-  s.metrics_clicks                                      AS clicks,
-  CAST(s.metrics_cost_micros / 1000000 AS INT64)        AS cost,
-  s.metrics_conversions                                 AS conversions,
-  CAST(s.metrics_conversions_value AS INT64)            AS revenue,
+  CAST(SUM(metrics_impressions)             AS INT64)   AS impressions,
+  CAST(SUM(metrics_clicks)                  AS INT64)   AS clicks,
+  CAST(SUM(metrics_cost_micros) / 1000000   AS INT64)   AS cost,
+  SUM(metrics_conversions)                              AS conversions,
+  CAST(SUM(metrics_conversions_value)       AS INT64)   AS revenue,
   CURRENT_TIMESTAMP()                                   AS inserted_at
-FROM `campwill-ec.google_ads.ads_CampaignBasicStats_5312357691` s
-JOIN `campwill-ec.google_ads.ads_Campaign_5312357691` c
-  ON s.campaign_id = c.campaign_id
-  AND s._DATA_DATE BETWEEN c._DATA_DATE AND DATE_ADD(c._DATA_DATE, INTERVAL 60 DAY)
-QUALIFY ROW_NUMBER() OVER (
-  PARTITION BY s._DATA_DATE, s.campaign_id
-  ORDER BY c._DATA_DATE DESC
-) = 1;
+FROM `campwill-ec.google_ads.ads_AccountBasicStats_5312357691`
+GROUP BY _DATA_DATE;

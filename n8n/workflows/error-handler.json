@@ -11,7 +11,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// n8n Error Trigger からのデータを整形 + 通知すべきか判定\n// 通知条件:\n//  - mode が 'trigger' (= cron / webhook など本番自動実行) の場合のみ\n//  - mode == 'manual' (UI から手動 Execute) はスキップ\n\nconst e = $input.first().json;\nconst exec = e.execution || {};\nconst wf = e.workflow || {};\nconst err = exec.error || {};\nconst lastNode = err.node && err.node.name ? err.node.name : '(unknown)';\nconst mode = exec.mode || '(unknown)';\nconst execId = exec.id || '?';\nconst execUrl = exec.url || `https://campwill.app.n8n.cloud/workflow/${wf.id}/executions/${execId}`;\n\nconst rawMessage = err.message || '(no message)';\nconst desc = err.description || '';\nconst httpCode = err.httpCode || '';\nconst rawDetail = (err.messages && err.messages[0]) ? String(err.messages[0]).substring(0, 500) : '';\n\nconst now = new Date();\nconst jst = new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19);\n\nconst shouldNotify = mode === 'trigger' || mode === 'webhook' || mode === 'retry';\n\nreturn [{\n  json: {\n    should_notify: shouldNotify,\n    workflow_name: wf.name || '(unknown)',\n    workflow_id: wf.id || '',\n    execution_id: execId,\n    execution_url: execUrl,\n    failed_node: lastNode,\n    mode: mode,\n    error_message: rawMessage,\n    error_description: desc,\n    http_code: httpCode,\n    raw_detail: rawDetail,\n    timestamp_jst: jst,\n    slack_text: `🚨 *n8n Workflow Failed*\\n*Workflow*: ${wf.name || '?'}\\n*Failed node*: ${lastNode}\\n*Error*: ${rawMessage}${httpCode ? ' (HTTP ' + httpCode + ')' : ''}\\n*Time*: ${jst} JST\\n*Mode*: ${mode}\\n*Execution*: ${execUrl}${rawDetail ? '\\n*Detail*: ```' + rawDetail + '```' : ''}`\n  }\n}];\n"
+        "jsCode": "// n8n Error Trigger 受信 → Slack mrkdwn (日本語 + リンク) に整形\n// 通知条件: mode が trigger / webhook / retry のみ (manual はスキップ)\n\nconst e = $input.first().json;\nconst exec = e.execution || {};\nconst wf = e.workflow || {};\nconst err = exec.error || {};\nconst wfName = wf.name || '(不明)';\nconst wfId   = wf.id   || '';\nconst lastNode = (err.node && err.node.name) ? err.node.name : '(不明)';\nconst mode = exec.mode || '(不明)';\nconst execId = exec.id || '?';\n\nconst N8N_BASE = 'https://campwill.app.n8n.cloud';\nconst wfUrl   = wfId ? `${N8N_BASE}/workflow/${wfId}` : N8N_BASE;\nconst execUrl = exec.url || (wfId ? `${N8N_BASE}/workflow/${wfId}/executions/${execId}` : N8N_BASE);\n\nconst rawMessage = (err.message || '(メッセージなし)').substring(0, 800);\nconst httpCode = err.httpCode || '';\nconst rawDetail = (err.messages && err.messages[0]) ? String(err.messages[0]).substring(0, 1000) : '';\nconst hasDetail = rawDetail && rawDetail !== rawMessage;\n\nconst now = new Date();\nconst jst = new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 19);\n\nconst shouldNotify = mode === 'trigger' || mode === 'webhook' || mode === 'retry';\n\n// Slack mrkdwn 形式\n//   * 太字\n//   `code`\n//   ```code block```\n//   <URL|ラベル> でクリッカブルリンク\nconst text =\n  `<!here> 🚨 *n8n ワークフロー失敗*\\n` +\n  `\\n` +\n  `📋 *ワークフロー*: <${wfUrl}|${wfName}>\\n` +\n  `🔧 *失敗ノード*: \\`${lastNode}\\`\\n` +\n  `⚡ *モード*: \\`${mode}\\`${httpCode ? ` · HTTP \\`${httpCode}\\`` : ''}\\n` +\n  `🕒 *時刻*: ${jst} JST\\n` +\n  `\\n` +\n  `*エラー*\\n` +\n  '```' + rawMessage + '```' +\n  (hasDetail ? `\\n*詳細*\\n\\`\\`\\`${rawDetail}\\`\\`\\`` : '') +\n  `\\n\\n` +\n  `🔎 <${execUrl}|この実行を開く>  ·  📋 <${wfUrl}|ワークフロー一覧へ>`;\n\nreturn [{\n  json: {\n    should_notify: shouldNotify,\n    text: text\n  }\n}];\n"
       },
       "id": "code-format",
       "name": "Code: Format Error",
@@ -42,16 +42,18 @@
     },
     {
       "parameters": {
-        "authentication": "accessToken",
+        "authentication": "oAuth2",
         "select": "channel",
         "channelId": {
           "__rl": true,
-          "value": "D09BB52NBBK",
-          "mode": "id"
+          "value": "C0B3BH5CZ61",
+          "mode": "id",
+          "cachedResultName": "n8n_alert"
         },
-        "text": "={{ $json.slack_text }}",
+        "text": "={{ $json.text }}",
         "otherOptions": {
-          "mrkdwn": true
+          "mrkdwn": true,
+          "link_names": true
         }
       },
       "id": "slack-post",
@@ -60,9 +62,9 @@
       "typeVersion": 2.3,
       "position": [912, 208],
       "credentials": {
-        "slackApi": {
-          "id": "aq0yDgM1wvPZzhFb",
-          "name": "Slack API（cs_bot）"
+        "slackOAuth2Api": {
+          "id": "QkIO5PiBLGcuUZOd",
+          "name": "Slack OAuth (n8n.cloud)"
         }
       }
     }

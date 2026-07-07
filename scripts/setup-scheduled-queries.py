@@ -1,11 +1,10 @@
 """
-mart 4 SQL を BigQuery Scheduled Query として登録/更新する。
+mart SQL を BigQuery Scheduled Query として登録/更新する (現状 22 本)。
 
-実行時刻 (JST 08:00 - 08:15 = UTC 23:00 - 23:15):
-  ec_daily_pnl          08:00 JST = 23:00 UTC
-  ec_channel_roi        08:05 JST = 23:05 UTC
-  ec_klaviyo_conversion 08:10 JST = 23:10 UTC
-  ec_weekly_summary     08:15 JST = 23:15 UTC
+実行時刻 (UTC):
+  - 23:00-23:55 UTC (08:00-08:55 JST): 12 本の主要 mart (Shopify/Klaviyo/SC/広告系)
+  - 20:30-20:35 UTC (05:30-05:35 JST): 在庫系 (n8n openlogi-inventory-daily 05:00 JST 後)
+  - 21:30 UTC       (06:30 JST):       UX 系 (n8n clarity-metrics-daily 06:00 JST 後)
 
 冪等: 同名 display_name の transferConfig が既に存在すれば PATCH で更新、無ければ POST で新規作成。
 """
@@ -44,6 +43,21 @@ SCHEDULES = [
     # 在庫系 (n8n openlogi-inventory-daily が 05:00 JST = 20:00 UTC に raw 投入後)
     ("mart-ec_inventory_health",          "ec_inventory_health.sql",          "every day 20:30"),
     ("mart-ec_storage_cost_estimated",    "ec_storage_cost_estimated.sql",    "every day 20:35"),
+    # ページ別 UX 健康度 (GA4 経由)。GA4 BQ Export が UTC 12-24h 遅延のため 23:00 UTC 以降
+    # (旧 ec_ux_health は Clarity API 仕様変更で 5/25 以降 0 rows のまま稼働、KUBELL-XXX で廃止)
+    ("mart-ec_page_ux_health",            "ec_page_ux_health.sql",            "every day 23:30"),
+    # Judge.me レビュー wide fact (PII ゼロ、全社員アクセス可)
+    ("mart-ec_review_enriched",           "ec_review_enriched.sql",           "every day 20:00"),
+    # 施策自動記録 (Claude API 出力直後 = 03:25 JST、効果検証は 07:50 JST)
+    ("mart-ec_initiatives",               "ec_initiatives.sql",               "every day 18:25"),
+    ("mart-ec_initiative_results",        "ec_initiative_results.sql",        "every day 22:50"),
+    # 横断分析 wide fact (Shopify n8n 04:30 JST + GA4 export 12-24h 後)
+    # ※ ec_order_enriched が ec_customer_user_crosswalk を参照するので順序固定: crosswalk 先
+    ("mart-ec_customer_user_crosswalk",   "ec_customer_user_crosswalk.sql",   "every day 22:25"),
+    ("mart-ec_order_enriched",            "ec_order_enriched.sql",            "every day 22:30"),
+    ("mart-ec_order_line_enriched",       "ec_order_line_enriched.sql",       "every day 22:35"),
+    # 組織標準 attribution マート (詳細仕様: docs/attribution-model.md)
+    ("mart-ec_channel_attribution_weekly","ec_channel_attribution_weekly.sql","every day 22:40"),
 ]
 
 PARENT = f"projects/{PROJECT_NUMBER}/locations/{LOCATION}"
