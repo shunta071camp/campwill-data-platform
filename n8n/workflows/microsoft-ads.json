@@ -70,6 +70,38 @@
     },
     {
       "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "DELETE FROM `campwill-ec.raw.ec_microsoft_ads` WHERE STRUCT(date, campaign_id, inserted_at) IN (  SELECT AS STRUCT date, campaign_id, inserted_at FROM (    SELECT date, campaign_id, inserted_at,           ROW_NUMBER() OVER (PARTITION BY date, campaign_id ORDER BY inserted_at DESC) AS rn    FROM `campwill-ec.raw.ec_microsoft_ads`    WHERE date >= DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 5 DAY)  ) WHERE rn > 1)",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "bq-purge-range-ms",
+      "name": "BQ Cleanup: dedup older inserts (post-insert)",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "position": [
+        500,
+        112
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      },
+      "notes": "INSERT 後に走って古い (date, campaign_id) 重複だけ削除。直近 5 日以内 partition にスコープしてスキャン量抑制。data loss リスクゼロ"
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "https://reporting.api.bingads.microsoft.com/Reporting/v13/GenerateReport/Submit",
         "authentication": "none",
@@ -86,21 +118,21 @@
             },
             {
               "name": "DeveloperToken",
-              "value": "={{ $json.developer_token }}"
+              "value": "={{ $('Set: Date Range + Customer/Account').first().json.developer_token }}"
             },
             {
               "name": "CustomerId",
-              "value": "={{ $json.customer_id }}"
+              "value": "={{ $('Set: Date Range + Customer/Account').first().json.customer_id }}"
             },
             {
               "name": "CustomerAccountId",
-              "value": "={{ $json.account_id }}"
+              "value": "={{ $('Set: Date Range + Customer/Account').first().json.account_id }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"ReportRequest\": {\n    \"Type\": \"CampaignPerformanceReportRequest\",\n    \"Format\": \"Csv\",\n    \"FormatVersion\": \"2.0\",\n    \"ReportName\": \"campwill_campaign_perf_{{ $json.from_date }}_{{ $json.to_date }}\",\n    \"ReturnOnlyCompleteData\": false,\n    \"Aggregation\": \"Daily\",\n    \"Columns\": [\"TimePeriod\", \"CampaignId\", \"CampaignName\", \"CampaignType\", \"Impressions\", \"Clicks\", \"Spend\", \"Conversions\", \"Revenue\"],\n    \"Scope\": {\n      \"AccountIds\": [{{ $json.account_id }}]\n    },\n    \"Time\": {\n      \"CustomDateRangeStart\": {\"Day\": {{ Number($json.from_date.split('-')[2]) }}, \"Month\": {{ Number($json.from_date.split('-')[1]) }}, \"Year\": {{ Number($json.from_date.split('-')[0]) }}},\n      \"CustomDateRangeEnd\":   {\"Day\": {{ Number($json.to_date.split('-')[2]) }},   \"Month\": {{ Number($json.to_date.split('-')[1]) }},   \"Year\": {{ Number($json.to_date.split('-')[0]) }}},\n      \"ReportTimeZone\": \"OsakaSapporoTokyo\"\n    }\n  }\n}",
+        "jsonBody": "={\n  \"ReportRequest\": {\n    \"Type\": \"CampaignPerformanceReportRequest\",\n    \"Format\": \"Csv\",\n    \"FormatVersion\": \"2.0\",\n    \"ReportName\": \"campwill_campaign_perf_{{ $('Set: Date Range + Customer/Account').first().json.from_date }}_{{ $('Set: Date Range + Customer/Account').first().json.to_date }}\",\n    \"ReturnOnlyCompleteData\": false,\n    \"Aggregation\": \"Daily\",\n    \"Columns\": [\"TimePeriod\", \"CampaignId\", \"CampaignName\", \"CampaignType\", \"Impressions\", \"Clicks\", \"Spend\", \"Conversions\", \"Revenue\"],\n    \"Scope\": {\n      \"AccountIds\": [{{ $('Set: Date Range + Customer/Account').first().json.account_id }}]\n    },\n    \"Time\": {\n      \"CustomDateRangeStart\": {\"Day\": {{ Number($('Set: Date Range + Customer/Account').first().json.from_date.split('-')[2]) }}, \"Month\": {{ Number($('Set: Date Range + Customer/Account').first().json.from_date.split('-')[1]) }}, \"Year\": {{ Number($('Set: Date Range + Customer/Account').first().json.from_date.split('-')[0]) }}},\n      \"CustomDateRangeEnd\":   {\"Day\": {{ Number($('Set: Date Range + Customer/Account').first().json.to_date.split('-')[2]) }},   \"Month\": {{ Number($('Set: Date Range + Customer/Account').first().json.to_date.split('-')[1]) }},   \"Year\": {{ Number($('Set: Date Range + Customer/Account').first().json.to_date.split('-')[0]) }}},\n      \"ReportTimeZone\": \"OsakaSapporoTokyo\"\n    }\n  }\n}",
         "options": {}
       },
       "id": "03b7ccfe-d913-4845-9408-9b42cfe3ca2d",
@@ -271,7 +303,96 @@
           "value": "ec_microsoft_ads",
           "cachedResultName": "ec_microsoft_ads"
         },
-        "options": {}
+        "options": {},
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "campaign_id",
+              "displayName": "campaign_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "campaign_name",
+              "displayName": "campaign_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "campaign_type",
+              "displayName": "campaign_type",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "impressions",
+              "displayName": "impressions",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "clicks",
+              "displayName": "clicks",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "cost",
+              "displayName": "cost",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "conversions",
+              "displayName": "conversions",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "revenue",
+              "displayName": "revenue",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "inserted_at",
+              "displayName": "inserted_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
       },
       "id": "ee9bae33-3397-490e-ad9d-a721d7d4f68d",
       "name": "BigQuery: Insert raw.ec_microsoft_ads",
@@ -703,6 +824,17 @@
         [
           {
             "node": "Set: Date Range + Customer/Account",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BigQuery: Insert raw.ec_microsoft_ads": {
+      "main": [
+        [
+          {
+            "node": "BQ Cleanup: dedup older inserts (post-insert)",
             "type": "main",
             "index": 0
           }

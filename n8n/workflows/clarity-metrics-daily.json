@@ -1,0 +1,91 @@
+{
+  "name": "clarity-metrics-daily",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "Schedule: Daily 6:00 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 304]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Clarity Data Export API は dimension1 パラメータを実質無視し、常に Channel breakdown を返す。\n// 過去 6 dim (Channel/Browser/URL/Country/Campaign/OS) 呼びで全て同じ Channel 結果が返っていたため無駄。\n// ec_ux_health は Clarity API 仕様変更 (Browser key 消失 + Traffic/EngagementTime/ScrollDepth metric 停止)\n// で 5/25 以降 0 rows のまま稼働、廃止済 → 1 call/day (Channel dim) に集約 (API quota 節約)。\nreturn [\n  { json: { dimension_set: 'Channel', q1: 'Channel', q2: '', q3: '' } }\n];\n"
+      },
+      "id": "init-configs",
+      "name": "Init: Dimension Configs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [464, 304]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "url": "={{ \"https://www.clarity.ms/export-data/api/v1/project-live-insights?numOfDays=1\" + ($json.q1 ? \"&dimension1=\" + $json.q1 : \"\") + ($json.q2 ? \"&dimension2=\" + $json.q2 : \"\") + ($json.q3 ? \"&dimension3=\" + $json.q3 : \"\") }}",
+        "method": "GET",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "clarity-call",
+      "name": "Clarity API: project-live-insights",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [688, 304],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "RzT1xGb0yrwgKH9Y",
+          "name": "Microsoft Clarity API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Clarity response: [{ metricName, information: [{ ...metrics + dimension values }] }, ...]\n// HTTP node が array response を split することがあるため、pairedItem.item で\n// 各 input をどの init config 由来か判定して group してから処理する。\n//\n// Clarity API は 1 日あたり実質 5-7 calls しか叩けない (doc: 10/day) ため、6 dim 呼びでも\n// 末尾数件が 429 で落ちることがある。HTTP node は onError=continueRegularOutput を設定済で、\n// 失敗 item が main output に流れてくる。下記で error item を判別して skip し、success 分のみ\n// BQ insert する (部分成功許容)。全 dim 失敗の日は BQ 0 件で許容 = 現状と同等。\n\nconst initItems = $('Init: Dimension Configs').all();\nconst now = new Date().toISOString();\nconst nowMs = Date.now();\nconst todayJST = new Date(nowMs + 9*60*60*1000).toISOString().split('T')[0];\nconst dataDate = new Date(nowMs + 9*60*60*1000 - 24*60*60*1000).toISOString().split('T')[0];\nconst rows = [];\nconst num = (v) => v == null || v === '' ? null : Number(v);\n\n// Group inputs by source init config index (via pairedItem.item)\nconst inputs = $input.all();\nconst grouped = new Map(); // initIndex -> [body, ...]\nfor (let i = 0; i < inputs.length; i++) {\n  const body = inputs[i].json;\n  // continueRegularOutput 経由で失敗 item が来る場合の skip\n  // n8n は失敗時 body に { error: { message, httpCode } } 形式 or message を入れる\n  const isError = body && (body.error || body._error\n    || (typeof body.httpCode === 'number' && body.httpCode >= 400)\n    || (typeof body.message === 'string' && /quota|429|exceeded|too many requests/i.test(body.message)));\n  if (isError) {\n    console.log('[skip error item ' + i + '] ' + JSON.stringify(body).slice(0, 200));\n    continue;\n  }\n  const p = inputs[i].pairedItem;\n  const idx = (p && (Array.isArray(p) ? p[0]?.item : p.item)) ?? i;\n  if (!grouped.has(idx)) grouped.set(idx, []);\n  grouped.get(idx).push(body);\n}\n\nfor (const [idx, bodies] of grouped) {\n  const cfg = initItems[idx]?.json;\n  if (!cfg) continue;\n  const dimNames = [cfg.q1, cfg.q2, cfg.q3].filter(x => x);\n\n  const merged = new Map();\n  const ensureRow = (entry) => {\n    const dimVals = dimNames.map(n => entry?.[n] != null ? String(entry[n]) : null);\n    const key = JSON.stringify(dimVals);\n    if (!merged.has(key)) {\n      merged.set(key, {\n        dimension_set:    cfg.dimension_set,\n        dimension1_name:  dimNames[0] || null,\n        dimension1_value: dimVals[0]  || null,\n        dimension2_name:  dimNames[1] || null,\n        dimension2_value: dimVals[1]  || null,\n        dimension3_name:  dimNames[2] || null,\n        dimension3_value: dimVals[2]  || null,\n      });\n    }\n    return merged.get(key);\n  };\n\n  // 各 input は metric 単一 or 配列。両方扱う。\n  const metrics = [];\n  for (const body of bodies) {\n    if (Array.isArray(body)) metrics.push(...body);\n    else if (Array.isArray(body?.data)) metrics.push(...body.data);\n    else if (body && body.metricName) metrics.push(body);\n  }\n\n  for (const m of metrics) {\n    const metricName = (m.metricName || '').toString();\n    const info = Array.isArray(m.information) ? m.information : [];\n    for (const entry of info) {\n      const row = ensureRow(entry);\n      switch (metricName) {\n        case 'Traffic':\n          row.traffic_total_session_count     = num(entry.totalSessionCount);\n          row.traffic_total_bot_session_count = num(entry.totalBotSessionCount);\n          row.traffic_distinct_user_count     = num(entry.distinctUserCount);\n          row.traffic_pages_per_session       = num(entry.PagesPerSessionPercentage ?? entry.pagesPerSessionPercentage);\n          break;\n        case 'EngagementTime':\n          row.engagement_active_time_seconds = num(entry.activeTime ?? entry.activeTimeInSeconds);\n          row.engagement_total_time_seconds  = num(entry.totalTime  ?? entry.totalTimeInSeconds);\n          break;\n        case 'ScrollDepth':\n          row.scroll_depth_percentage = num(entry.averageScrollDepth ?? entry.scrollDepth);\n          break;\n        case 'RageClickCount':\n        case 'RageClicks':\n          row.rage_click_count = num(entry.subTotal ?? entry.rageClickCount);\n          break;\n        case 'DeadClickCount':\n        case 'DeadClicks':\n          row.dead_click_count = num(entry.subTotal ?? entry.deadClickCount);\n          break;\n        case 'ExcessiveScroll':\n        case 'ExcessiveScrollCount':\n          row.excessive_scroll_count = num(entry.subTotal ?? entry.excessiveScrollCount);\n          break;\n        case 'QuickbackClick':\n        case 'QuickBackCount':\n          row.quick_back_count = num(entry.subTotal ?? entry.quickBackCount);\n          break;\n        case 'ScriptError':\n        case 'ScriptErrorCount':\n          row.script_error_count = num(entry.subTotal ?? entry.scriptErrorCount);\n          break;\n        case 'ErrorClick':\n        case 'ErrorClickCount':\n          row.error_click_count = num(entry.subTotal ?? entry.errorClickCount);\n          break;\n      }\n    }\n  }\n\n  const payload = JSON.stringify(bodies);\n  const cappedPayload = payload.length > 100000 ? payload.slice(0, 100000) : payload;\n  for (const row of merged.values()) {\n    rows.push({\n      snapshot_date: todayJST,\n      data_date:     dataDate,\n      ...row,\n      raw_payload:   cappedPayload,\n      inserted_at:   now\n    });\n  }\n}\n\nreturn rows.map(json => ({ json }));\n"
+      },
+      "id": "flatten",
+      "name": "Code: Flatten to BQ Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [912, 304]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {"__rl": true, "mode": "list", "value": "campwill-ec", "cachedResultName": "campwill-ec"},
+        "datasetId": {"__rl": true, "mode": "list", "value": "raw", "cachedResultName": "raw"},
+        "tableId":   {"__rl": true, "mode": "list", "value": "ec_clarity_metrics_daily", "cachedResultName": "ec_clarity_metrics_daily"},
+        "options": {}
+      },
+      "id": "bq-insert",
+      "name": "BigQuery: Insert raw.ec_clarity_metrics_daily",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [1136, 304],
+      "credentials": {
+        "googleApi": {"id": "WCCQWQHLcPs05bNu", "name": "Google Service Account account（EC）"}
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: Daily 6:00 AM JST": {"main": [[{"node": "Init: Dimension Configs", "type": "main", "index": 0}]]},
+    "Init: Dimension Configs":     {"main": [[{"node": "Clarity API: project-live-insights", "type": "main", "index": 0}]]},
+    "Clarity API: project-live-insights": {"main": [[{"node": "Code: Flatten to BQ Rows", "type": "main", "index": 0}]]},
+    "Code: Flatten to BQ Rows":    {"main": [[{"node": "BigQuery: Insert raw.ec_clarity_metrics_daily", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1", "errorWorkflow": "V72FkZBDign2AB1y"}
+}

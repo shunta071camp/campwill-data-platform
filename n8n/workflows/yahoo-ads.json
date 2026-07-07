@@ -70,6 +70,38 @@
     },
     {
       "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "DELETE FROM `campwill-ec.raw.ec_yahoo_ads` WHERE STRUCT(date, campaign_id, inserted_at) IN (  SELECT AS STRUCT date, campaign_id, inserted_at FROM (    SELECT date, campaign_id, inserted_at,           ROW_NUMBER() OVER (PARTITION BY date, campaign_id ORDER BY inserted_at DESC) AS rn    FROM `campwill-ec.raw.ec_yahoo_ads`    WHERE date >= DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 5 DAY)  ) WHERE rn > 1)",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "bq-purge-range",
+      "name": "BQ Cleanup: dedup older inserts (post-insert)",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "position": [
+        1400,
+        304
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      },
+      "notes": "INSERT 後に走って古い (date, campaign_id) 重複だけ削除。直近 5 日以内 partition にスコープしてスキャン量抑制。data loss リスクゼロ (INSERT 完了後の cleanup)"
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "https://ads-search.yahooapis.jp/api/v19/ReportDefinitionService/add",
         "authentication": "predefinedCredentialType",
@@ -83,13 +115,13 @@
             },
             {
               "name": "x-z-base-account-id",
-              "value": "={{ $json.base_account_id }}"
+              "value": "={{ $('Set: Date Range + Account IDs').first().json.base_account_id }}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({accountId: Number($json.search_account_id), operand: [{accountId: Number($json.search_account_id), reportName: `campwill_search_${$json.from_date}_${$json.to_date}`, reportType: 'CAMPAIGN', reportDateRangeType: 'CUSTOM_DATE', dateRange: {startDate: $json.from_date, endDate: $json.to_date}, fields: ['DAY','CAMPAIGN_ID','CAMPAIGN_NAME','IMPS','CLICKS','COST','CONVERSIONS','CONV_VALUE'], reportDownloadFormat: 'CSV', reportDownloadEncode: 'UTF8', reportLanguage: 'EN', reportCompressType: 'NONE', reportIncludeDeleted: 'FALSE'}]}) }}",
+        "jsonBody": "={{ JSON.stringify({accountId: Number($('Set: Date Range + Account IDs').first().json.search_account_id), operand: [{accountId: Number($('Set: Date Range + Account IDs').first().json.search_account_id), reportName: `campwill_search_${$('Set: Date Range + Account IDs').first().json.from_date}_${$('Set: Date Range + Account IDs').first().json.to_date}`, reportType: 'CAMPAIGN', reportDateRangeType: 'CUSTOM_DATE', dateRange: {startDate: $('Set: Date Range + Account IDs').first().json.from_date, endDate: $('Set: Date Range + Account IDs').first().json.to_date}, fields: ['DAY','CAMPAIGN_ID','CAMPAIGN_NAME','IMPS','CLICKS','COST','CONVERSIONS','CONV_VALUE'], reportDownloadFormat: 'CSV', reportDownloadEncode: 'UTF8', reportLanguage: 'EN', reportCompressType: 'NONE', reportIncludeDeleted: 'FALSE'}]}) }}",
         "options": {}
       },
       "id": "submit-search-report",
@@ -257,8 +289,104 @@
           "value": "ec_yahoo_ads",
           "cachedResultName": "ec_yahoo_ads"
         },
-        "dataMode": "autoMapInputData",
-        "options": {}
+        "options": {},
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "campaign_id",
+              "displayName": "campaign_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "campaign_name",
+              "displayName": "campaign_name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "campaign_type",
+              "displayName": "campaign_type",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "ad_group_id",
+              "displayName": "ad_group_id",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "impressions",
+              "displayName": "impressions",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "clicks",
+              "displayName": "clicks",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "cost",
+              "displayName": "cost",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "conversions",
+              "displayName": "conversions",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "revenue",
+              "displayName": "revenue",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "inserted_at",
+              "displayName": "inserted_at",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
       },
       "id": "bq-insert",
       "name": "BigQuery: Insert raw.ec_yahoo_ads",
@@ -359,6 +487,17 @@
         [
           {
             "node": "BigQuery: Insert raw.ec_yahoo_ads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BigQuery: Insert raw.ec_yahoo_ads": {
+      "main": [
+        [
+          {
+            "node": "BQ Cleanup: dedup older inserts (post-insert)",
             "type": "main",
             "index": 0
           }
