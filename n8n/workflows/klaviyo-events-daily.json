@@ -1,0 +1,180 @@
+{
+  "name": "klaviyo_events_daily",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 4 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule: 4:15 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, -256]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "executeQuery",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "SELECT IFNULL(FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', MAX(event_ts)), FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY))) AS since FROM `campwill-ec.raw.ec_klaviyo_events`",
+        "options": {}
+      },
+      "id": "bq-get-since",
+      "name": "BigQuery: Get MAX(event_ts)",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [464, -256],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://a.klaviyo.com/api/metrics/",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "accept", "value": "application/vnd.api+json"},
+            {"name": "revision", "value": "2024-10-15"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json"}}
+        }
+      },
+      "id": "http-get-metric",
+      "name": "HTTP: Get Clicked Email metric_id",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [688, -256],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eeW1GgHZ1JTnXWfE",
+          "name": "klaviyo credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 全 metrics 一覧から \"Clicked Email\" を name マッチで抽出\n// (Klaviyo Metrics API は name による filter 非対応)\nconst metricsResp = $input.first().json;\nconst metrics = (metricsResp && Array.isArray(metricsResp.data)) ? metricsResp.data : [];\nconst target = metrics.find(m => (m.attributes && m.attributes.name) === 'Clicked Email');\nif (!target) {\n  throw new Error('Clicked Email metric not found in Klaviyo account. Available metrics: ' + metrics.map(m => m.attributes && m.attributes.name).join(', '));\n}\nconst since = $('BigQuery: Get MAX(event_ts)').first().json.since;\nreturn [{ json: { metric_id: target.id, metric_name: target.attributes.name, since } }];\n"
+      },
+      "id": "code-prep-params",
+      "name": "Code: Prep metric_id + since",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [912, -256]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://a.klaviyo.com/api/events/?include=profile&page%5Bsize%5D=200&filter=' + encodeURIComponent('and(equals(metric_id,\"' + $json.metric_id + '\"),greater-than(datetime,' + $json.since + '))') }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "accept", "value": "application/vnd.api+json"},
+            {"name": "revision", "value": "2024-10-15"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json"}},
+          "pagination": {
+            "pagination": {
+              "paginationMode": "responseContainsNextURL",
+              "nextURL": "={{ (typeof $response.body === 'string' ? JSON.parse($response.body) : $response.body).links.next }}",
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.links.next }}",
+              "limitPagesFetched": false
+            }
+          }
+        }
+      },
+      "id": "http-events",
+      "name": "HTTP: Klaviyo Events (incremental)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1136, -256],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "eeW1GgHZ1JTnXWfE",
+          "name": "klaviyo credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Klaviyo Events 差分取得 → BigQuery raw.ec_klaviyo_events に append\n// 取得対象: Clicked Email metric のイベント\n// 重複: event_id 主キー (dedup view で MAX(inserted_at) 採用)\n// JSON parse 注意: n8n が vnd.api+json を string で返すケースがある\n\nfunction normalize(item) {\n  if (item && item.json && typeof item.json.data === 'string') {\n    try { return { json: JSON.parse(item.json.data) }; } catch (e) { return item; }\n  }\n  return item;\n}\n\nconst now = new Date().toISOString();\nconst rows = [];\n\nfor (const rawItem of $input.all()) {\n  const item = normalize(rawItem);\n  const events = (item.json && Array.isArray(item.json.data)) ? item.json.data : [];\n  // included から profile_id -> email lookup マップを構築\n  const included = (item.json && Array.isArray(item.json.included)) ? item.json.included : [];\n  const profileEmailMap = {};\n  for (const inc of included) {\n    if (inc.type === 'profile' && inc.attributes && inc.attributes.email) {\n      profileEmailMap[inc.id] = inc.attributes.email;\n    }\n  }\n\n  for (const e of events) {\n    const attrs = e.attributes || {};\n    const props = attrs.event_properties || {};\n    const ts = attrs.datetime || attrs.timestamp || null;\n    if (!ts) continue;\n    // event_date: UTC → JST (+9h) → YYYY-MM-DD\n    const event_date = new Date(new Date(ts).getTime() + 9 * 3600 * 1000).toISOString().substring(0, 10);\n    // profile_id は relationships.profile.data.id にある\n    const rel = e.relationships || {};\n    const profile_id = (rel.profile && rel.profile.data && rel.profile.data.id) || attrs.profile_id || null;\n    if (!profile_id) continue;\n    const email = profileEmailMap[profile_id] || null;\n    rows.push({\n      event_id: e.id,\n      metric_id: attrs.metric_id || (rel.metric && rel.metric.data && rel.metric.data.id) || null,\n      metric_name: 'Clicked Email',\n      profile_id: profile_id,\n      email: email,\n      campaign_id: props['$message'] || props.campaign_id || props.campaign || null,\n      message_id: props.message_id || props['$message'] || null,\n      event_ts: ts,\n      event_date: event_date,\n      url: props.URL || props.url || null,\n      properties_json: JSON.stringify(props),\n      inserted_at: now\n    });\n  }\n}\n\nreturn rows.map((json) => ({ json }));\n"
+      },
+      "id": "code-transform",
+      "name": "Transform",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, -256]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "raw",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "ec_klaviyo_events",
+          "cachedResultName": "ec_klaviyo_events"
+        },
+        "options": {}
+      },
+      "id": "bq-insert",
+      "name": "BigQuery: Insert raw.ec_klaviyo_events",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [1584, -256],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: 4:15 AM JST": {"main": [[{"node": "BigQuery: Get MAX(event_ts)", "type": "main", "index": 0}]]},
+    "BigQuery: Get MAX(event_ts)": {"main": [[{"node": "HTTP: Get Clicked Email metric_id", "type": "main", "index": 0}]]},
+    "HTTP: Get Clicked Email metric_id": {"main": [[{"node": "Code: Prep metric_id + since", "type": "main", "index": 0}]]},
+    "Code: Prep metric_id + since": {"main": [[{"node": "HTTP: Klaviyo Events (incremental)", "type": "main", "index": 0}]]},
+    "HTTP: Klaviyo Events (incremental)": {"main": [[{"node": "Transform", "type": "main", "index": 0}]]},
+    "Transform": {"main": [[{"node": "BigQuery: Insert raw.ec_klaviyo_events", "type": "main", "index": 0}]]}
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tokyo"
+  }
+}

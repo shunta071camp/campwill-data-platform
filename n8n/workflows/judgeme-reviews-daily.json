@@ -1,0 +1,159 @@
+{
+  "name": "judgeme_reviews_daily",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule: 3:30 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, -256]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "executeQuery",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "-- 初回 (table 空): created_at_min を遥か昔に → 全件 backfill\n-- 以降: 最新 review_created_at の 7日前から (overlap で moderation 状態変化等を拾う)\nSELECT IFNULL(FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', TIMESTAMP_SUB(MAX(review_created_at), INTERVAL 7 DAY)), '2020-01-01T00:00:00Z') AS created_at_min FROM `campwill-ec.raw.ec_judgeme_reviews`",
+        "options": {}
+      },
+      "id": "bq-get-since",
+      "name": "BigQuery: Get since",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [464, -256],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.judge.me/api/v1/reviews",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "shop_domain",    "value": "kubell.myshopify.com"},
+            {"name": "per_page",       "value": "100"},
+            {"name": "page",           "value": "1"},
+            {"name": "created_at_min", "value": "={{ $json.created_at_min }}"}
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": true
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "page",
+                    "value": "={{ $pageCount + 1 }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.reviews || $response.body.reviews.length === 0 }}",
+              "limitPagesFetched": true,
+              "maxRequests": 200
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "http-judgeme",
+      "name": "Judge.me API: reviews",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [688, -256],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "e0MG957vUG5zDQ7t",
+          "name": "Judge.me API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Judge.me reviews API レスポンスを BQ row に展開\n// レスポンス: { reviews: [ {id, rating, title, body, reviewer, product_external_id, ...} ], current_page, per_page, total }\n// 1 page あたり最大 100 reviews、複数ページに渡る場合は n8n pagination で連結される\n\nconst now = new Date().toISOString();\nconst rows = [];\nconst toBool = v => v === true || v === 'true' || v === 1;\n\nfor (const item of $input.all()) {\n  const body = item.json;\n  // エラー時の error フィールド対応\n  if (!body || body.error || !Array.isArray(body.reviews)) {\n    if (body && body.error) throw new Error('Judge.me API error: ' + JSON.stringify(body).substring(0, 500));\n    continue;\n  }\n  for (const r of body.reviews) {\n    if (!r || r.id == null) continue;\n    const reviewer = r.reviewer || {};\n    const pictures = Array.isArray(r.pictures) ? r.pictures : [];\n    rows.push({\n      review_id:               Number(r.id),\n      product_external_id:     r.product_external_id != null ? String(r.product_external_id) : null,\n      product_handle:          r.product_handle || (r.product && r.product.handle) || null,\n      product_title:           r.product_title  || (r.product && r.product.title)  || null,\n      rating:                  r.rating != null ? Number(r.rating) : null,\n      title:                   r.title || null,\n      body:                    r.body  || null,\n      reviewer_name:           reviewer.name  || r.reviewer_name  || null,\n      reviewer_email:          reviewer.email || r.reviewer_email || null,\n      verified:                r.verified || null,\n      verified_buyer:          (r.verified === 'verified-purchase' || r.verified === 'confirmed-buyer'),\n      curated:                 r.curated   || null,\n      published:               toBool(r.published),\n      hidden:                  toBool(r.hidden),\n      featured:                toBool(r.featured),\n      source:                  r.source || null,\n      ip_address:              r.ip_address || null,\n      has_published_pictures:  toBool(r.has_published_pictures),\n      has_published_videos:    toBool(r.has_published_videos),\n      pictures_json:           pictures.length ? JSON.stringify(pictures).substring(0, 50000) : null,\n      review_created_at:       r.created_at || null,\n      review_updated_at:       r.updated_at || null,\n      raw_payload:             JSON.stringify(r).substring(0, 100000),\n      inserted_at:             now\n    });\n  }\n}\n\nreturn rows.map(json => ({ json }));\n"
+      },
+      "id": "code-transform",
+      "name": "Transform",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [912, -256]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "raw",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "ec_judgeme_reviews",
+          "cachedResultName": "ec_judgeme_reviews"
+        },
+        "options": {}
+      },
+      "id": "bq-insert",
+      "name": "BigQuery: Insert raw.ec_judgeme_reviews",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [1136, -256],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: 3:30 AM JST":   {"main": [[{"node": "BigQuery: Get since", "type": "main", "index": 0}]]},
+    "BigQuery: Get since":     {"main": [[{"node": "Judge.me API: reviews", "type": "main", "index": 0}]]},
+    "Judge.me API: reviews":   {"main": [[{"node": "Transform", "type": "main", "index": 0}]]},
+    "Transform":               {"main": [[{"node": "BigQuery: Insert raw.ec_judgeme_reviews", "type": "main", "index": 0}]]}
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tokyo",
+    "errorWorkflow": "V72FkZBDign2AB1y"
+  }
+}

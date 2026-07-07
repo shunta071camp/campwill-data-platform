@@ -1,0 +1,145 @@
+{
+  "name": "tiktok_ads",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule: 3:15 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, -256]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "executeQuery",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "-- TikTok 制限: stat_time_day 最大 30日。初回 28日 backfill、以降は最新 - 2日 から (overlap で確定値捕捉、過去 28日内に収まれば OK)\nSELECT\n  IFNULL(FORMAT_DATE('%Y-%m-%d', GREATEST(DATE_SUB(MAX(date), INTERVAL 2 DAY), DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 28 DAY))), FORMAT_DATE('%Y-%m-%d', DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 28 DAY))) AS start_date,\n  FORMAT_DATE('%Y-%m-%d', DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 1 DAY)) AS end_date\nFROM `campwill-ec.raw.ec_tiktok_ads`",
+        "options": {}
+      },
+      "id": "bq-get-range",
+      "name": "BigQuery: Get Date Range",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [464, -256],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://business-api.tiktok.com/open_api/v1.3/report/integrated/get/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "advertiser_id",         "value": "7643694875730001936"},
+            {"name": "report_type",            "value": "BASIC"},
+            {"name": "data_level",             "value": "AUCTION_CAMPAIGN"},
+            {"name": "dimensions",             "value": "[\"campaign_id\",\"stat_time_day\"]"},
+            {"name": "metrics",                "value": "[\"campaign_name\",\"objective_type\",\"impressions\",\"clicks\",\"spend\",\"conversion\",\"complete_payment\",\"complete_payment_roas\",\"video_play_actions\",\"video_views_p25\",\"video_views_p50\",\"video_views_p75\",\"video_views_p100\"]"},
+            {"name": "start_date",             "value": "={{ $json.start_date }}"},
+            {"name": "end_date",               "value": "={{ $json.end_date }}"},
+            {"name": "page_size",              "value": "1000"}
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "http-tiktok",
+      "name": "TikTok API: report/integrated/get",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [688, -256],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Mt7vhgBKx2dtgQJk",
+          "name": "TikTok Access Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// TikTok Marketing API レスポンス展開\n// 構造: { code, message, data: { list: [{ dimensions, metrics }], page_info } }\n// 1 行 = (campaign_id, stat_time_day) × metrics\n// stat_time_day は \"2026-05-25 00:00:00\" 形式 → YYYY-MM-DD に丸める\n\nconst now = new Date().toISOString();\nconst advertiserId = '7643694875730001936';\nconst rows = [];\nconst toInt = v => (v === undefined || v === null || v === '') ? null : Math.round(Number(v));\nconst toFloat = v => (v === undefined || v === null || v === '') ? null : Number(v);\n\nfor (const item of $input.all()) {\n  const body = item.json;\n  if (!body || body.code !== 0 || !body.data || !Array.isArray(body.data.list)) {\n    // API エラー: code != 0 → log で気付けるよう raw 出力\n    if (body && body.code !== 0) throw new Error('TikTok API error code=' + body.code + ' message=' + body.message + ' full=' + JSON.stringify(body).substring(0, 2000));\n    continue;\n  }\n  for (const r of body.data.list) {\n    const d = r.dimensions || {};\n    const m = r.metrics || {};\n    const dateStr = (d.stat_time_day || '').substring(0, 10);\n    const campaignId = d.campaign_id ? String(d.campaign_id) : null;\n    if (!dateStr || !campaignId) continue;\n    rows.push({\n      date:            dateStr,\n      advertiser_id:   advertiserId,\n      campaign_id:     campaignId,\n      campaign_name:   m.campaign_name || null,\n      objective_type:  m.objective_type || null,\n      ad_group_id:     null,\n      impressions:     toInt(m.impressions),\n      clicks:          toInt(m.clicks),\n      cost:            toInt(m.spend),\n      conversions:     toFloat(m.conversion),\n      revenue:         (m.complete_payment_roas != null && m.spend != null) ? Math.round(Number(m.complete_payment_roas) * Number(m.spend)) : null,\n      video_views:     toInt(m.video_play_actions),\n      video_p25_count: toInt(m.video_views_p25),\n      video_p50_count: toInt(m.video_views_p50),\n      video_p75_count: toInt(m.video_views_p75),\n      video_p100_count:toInt(m.video_views_p100),\n      inserted_at:     now\n    });\n  }\n}\n\nreturn rows.map(json => ({ json }));\n"
+      },
+      "id": "code-transform",
+      "name": "Transform",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [912, -256]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "raw",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "ec_tiktok_ads",
+          "cachedResultName": "ec_tiktok_ads"
+        },
+        "options": {}
+      },
+      "id": "bq-insert",
+      "name": "BigQuery: Insert raw.ec_tiktok_ads",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [1136, -256],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: 3:15 AM JST":            {"main": [[{"node": "BigQuery: Get Date Range", "type": "main", "index": 0}]]},
+    "BigQuery: Get Date Range":         {"main": [[{"node": "TikTok API: report/integrated/get", "type": "main", "index": 0}]]},
+    "TikTok API: report/integrated/get":{"main": [[{"node": "Transform", "type": "main", "index": 0}]]},
+    "Transform":                        {"main": [[{"node": "BigQuery: Insert raw.ec_tiktok_ads", "type": "main", "index": 0}]]}
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tokyo",
+    "errorWorkflow": "V72FkZBDign2AB1y"
+  }
+}

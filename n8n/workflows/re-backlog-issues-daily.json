@@ -1,0 +1,262 @@
+{
+  "name": "re_backlog_issues_daily",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "11 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule: 3:11 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, -256]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "executeQuery",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-realestate",
+          "cachedResultName": "campwill-realestate"
+        },
+        "sqlQuery": "SELECT IFNULL(FORMAT_DATE('%Y-%m-%d', DATE_SUB(DATE(MAX(updated_at)), INTERVAL 1 DAY)),\n              FORMAT_DATE('%Y-%m-%d', DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 90 DAY))) AS updated_since\nFROM `campwill-realestate.raw.re_backlog_issues`",
+        "options": {}
+      },
+      "id": "bq-get-since",
+      "name": "BigQuery: Get updated_since",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [464, -256],
+      "credentials": {
+        "googleApi": {
+          "id": "jDUIvG8csxBsVIGR",
+          "name": "Google Service Account (realestate)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://campwill.backlog.com/api/v2/projects/KRASULA",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "options": {
+          "response": {"response": {"responseFormat": "json", "neverError": true}},
+          "timeout": 30000
+        }
+      },
+      "id": "http-get-project",
+      "name": "Backlog: get project KRASULA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [576, -256],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "SQjyvr3N3Fwux7Rp",
+          "name": "Backlog API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const proj = $input.first().json;\nif (!proj || proj.id == null) {\n  throw new Error('Backlog get project failed: ' + JSON.stringify(proj).substring(0, 500));\n}\nconst since = $('BigQuery: Get updated_since').first().json.updated_since;\nreturn [{ json: { project_id: proj.id, updated_since: since } }];\n"
+      },
+      "id": "code-extract-pid",
+      "name": "Code: extract project_id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [688, -256]
+    },
+    {
+      "parameters": {
+        "url": "https://campwill.backlog.com/api/v2/issues",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "projectId[]",  "value": "={{ $json.project_id }}"},
+            {"name": "updatedSince", "value": "={{ $json.updated_since }}"},
+            {"name": "count",        "value": "100"},
+            {"name": "order",        "value": "asc"},
+            {"name": "sort",         "value": "updated"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json", "neverError": true}},
+          "timeout": 60000,
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {"type": "qs", "name": "offset", "value": "={{ $pageCount * 100 }}"}
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ Array.isArray($response.body) ? $response.body.length < 100 : true }}",
+              "limitPagesFetched": true,
+              "maxRequests": 30
+            }
+          }
+        }
+      },
+      "id": "http-backlog",
+      "name": "Backlog API: issues (property, paginated)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [800, -256],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "SQjyvr3N3Fwux7Rp",
+          "name": "Backlog API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://campwill.backlog.com/api/v2/issues/{{ $json.id }}/comments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "count", "value": "100"},
+            {"name": "order", "value": "desc"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json", "neverError": true}},
+          "timeout": 60000,
+          "batching": {"batch": {"batchSize": 5, "batchInterval": 500}}
+        }
+      },
+      "id": "http-comments",
+      "name": "Backlog API: comments per issue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [912, -256],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "SQjyvr3N3Fwux7Rp",
+          "name": "Backlog API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// comments response の各 item に issueId が含まれるので、それで grouping して issue と紐付け\nconst now = new Date().toISOString();\nconst issuesAll = $('Backlog API: issues (property, paginated)').all();\n\nconst lastCommentByIssue = new Map();\nconst lastStatusChangeByIssue = new Map();\nfor (const item of $input.all()) {\n  const body = item.json;\n  const list = Array.isArray(body) ? body : (body && body.id != null ? [body] : []);\n  for (const c of list) {\n    if (!c || c.issueId == null) continue;\n    const iid = String(c.issueId);\n    if (c.created) {\n      const prev = lastCommentByIssue.get(iid);\n      if (!prev || c.created > prev) lastCommentByIssue.set(iid, c.created);\n    }\n    if (Array.isArray(c.changeLog)) {\n      const isStatusChange = c.changeLog.some(cl => cl.field === 'status');\n      if (isStatusChange && c.created) {\n        const prev = lastStatusChangeByIssue.get(iid);\n        if (!prev || c.created > prev) lastStatusChangeByIssue.set(iid, c.created);\n      }\n    }\n  }\n}\n\nconst rows = [];\nfor (const item of issuesAll) {\n  const i = item.json;\n  if (!i || i.id == null) continue;\n  const iid = String(i.id);\n  rows.push({\n    issue_id:          iid,\n    project_id:        i.projectId != null ? String(i.projectId) : null,\n    issue_type:        i.issueType ? i.issueType.name : null,\n    title:             i.summary || null,\n    description:       (i.description || '').toString().substring(0, 50000) || null,\n    status:            i.status ? i.status.name : null,\n    priority:          i.priority ? i.priority.name : null,\n    assignee:          i.assignee ? i.assignee.name : null,\n    due_date:          i.dueDate ? String(i.dueDate).substring(0, 10) : null,\n    created_at:        i.created || null,\n    updated_at:        i.updated || null,\n    resolved_at:       i.resolvedAt || null,\n    status_changed_at: lastStatusChangeByIssue.get(iid) || null,\n    last_comment_at:   lastCommentByIssue.get(iid) || null,\n    inserted_at:       now\n  });\n}\nreturn rows.map(json => ({ json }));\n"
+      },
+      "id": "code-transform",
+      "name": "Transform",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [912, -256]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-realestate",
+          "cachedResultName": "campwill-realestate"
+        },
+        "datasetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "raw",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "re_backlog_issues",
+          "cachedResultName": "re_backlog_issues"
+        },
+        "options": {}
+      },
+      "id": "bq-insert",
+      "name": "BigQuery: Insert raw.re_backlog_issues",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [1136, -256],
+      "credentials": {
+        "googleApi": {
+          "id": "jDUIvG8csxBsVIGR",
+          "name": "Google Service Account (realestate)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// comments response に issueId/projectId が含まれるので直接利用\nconst now = new Date().toISOString();\nconst out = [];\nfor (const item of $input.all()) {\n  const body = item.json;\n  const list = Array.isArray(body) ? body : (body && body.id != null ? [body] : []);\n  for (const c of list) {\n    if (!c || c.id == null || c.issueId == null) continue;\n    out.push({\n      comment_id:  String(c.id),\n      issue_id:    String(c.issueId),\n      project_id:  c.projectId != null ? String(c.projectId) : null,\n      author:      (c.createdUser && c.createdUser.name) || null,\n      content:     (c.content || '').toString().substring(0, 50000),\n      created_at:  c.created || null,\n      updated_at:  c.updated || null,\n      inserted_at: now\n    });\n  }\n}\nreturn out.map(json => ({ json }));\n"
+      },
+      "id": "code-build-comments",
+      "name": "Code: build comment rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [912, -64]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-realestate",
+          "cachedResultName": "campwill-realestate"
+        },
+        "datasetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "raw",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "re_backlog_comments",
+          "cachedResultName": "re_backlog_comments"
+        },
+        "options": {}
+      },
+      "id": "bq-insert-comments",
+      "name": "BigQuery: Insert raw.re_backlog_comments",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [1136, -64],
+      "credentials": {
+        "googleApi": {
+          "id": "jDUIvG8csxBsVIGR",
+          "name": "Google Service Account (realestate)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: 3:11 AM JST":                    {"main": [[{"node": "BigQuery: Get updated_since", "type": "main", "index": 0}]]},
+    "BigQuery: Get updated_since":              {"main": [[{"node": "Backlog: get project KRASULA", "type": "main", "index": 0}]]},
+    "Backlog: get project KRASULA":             {"main": [[{"node": "Code: extract project_id", "type": "main", "index": 0}]]},
+    "Code: extract project_id":                 {"main": [[{"node": "Backlog API: issues (property, paginated)", "type": "main", "index": 0}]]},
+    "Backlog API: issues (property, paginated)":{"main": [[{"node": "Backlog API: comments per issue", "type": "main", "index": 0}]]},
+    "Backlog API: comments per issue":          {"main": [[{"node": "Transform", "type": "main", "index": 0}, {"node": "Code: build comment rows", "type": "main", "index": 0}]]},
+    "Transform":                                {"main": [[{"node": "BigQuery: Insert raw.re_backlog_issues", "type": "main", "index": 0}]]},
+    "Code: build comment rows":                 {"main": [[{"node": "BigQuery: Insert raw.re_backlog_comments", "type": "main", "index": 0}]]}
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tokyo",
+    "errorWorkflow": "V72FkZBDign2AB1y"
+  }
+}

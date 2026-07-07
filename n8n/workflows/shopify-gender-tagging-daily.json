@@ -1,0 +1,260 @@
+{
+  "name": "shopify_gender_tagging_daily",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "35 4 * * *"
+            }
+          ]
+        }
+      },
+      "id": "sgt-schedule-0001",
+      "name": "Schedule: 4:35 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "executeQuery",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "-- 前日に着弾した order を customer_id 付きで取得。\n-- tags は raw 取り込み時点 (前日 04:30 JST スナップショット) のもの。\n-- gender:* の最終 merge ロジックは workflow 後段で idempotent に処理するため、\n-- ここでは tags フィルタは行わずすべて取得。\nSELECT\n  order_id,\n  CAST(customer_id AS STRING) AS customer_id,\n  IFNULL(tags, '') AS existing_order_tags\nFROM `campwill-ec.raw.ec_shopify_orders`\nWHERE order_date = DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 1 DAY)\n  AND customer_id IS NOT NULL",
+        "options": {}
+      },
+      "id": "sgt-bq-orders-0002",
+      "name": "BigQuery: Get yesterday orders",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [464, 300],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "sgt-loop-0003",
+      "name": "Order Loop",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [688, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://kubell.myshopify.com/admin/api/2026-04/customers/{{$json.customer_id}}.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "options": {
+          "retry": {"maxRetries": 3, "waitBetweenRetries": 1500},
+          "timeout": 15000
+        }
+      },
+      "id": "sgt-getcust-0004",
+      "name": "Get Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [912, 380],
+      "credentials": {
+        "shopifyOAuth2Api": {"id": "cPc8Q4etwvXhA5vJ", "name": "Shopify Account"}
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": false, "leftValue": "", "typeValidation": "loose", "version": 3},
+          "conditions": [
+            {
+              "id": "sgt-has-cond",
+              "leftValue": "={{$json.customer.tags}}",
+              "rightValue": "gender:(male|female)",
+              "operator": {"type": "string", "operation": "regex"}
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "sgt-hasgender-0005",
+      "name": "Has Definitive Gender Tag?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1136, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// gender:male / gender:female 持ちの場合は Dify を呼ばずに既存タグを reuse\n// (gender:unknown のみ持ちの場合は IF が false 側に流れて再判定される)\nconst source = $('Order Loop').first().json;\nconst customer = $json.customer;\nconst tags = (customer.tags || '').split(',').map(t => t.trim());\nconst gt = tags.find(t => t === 'gender:male' || t === 'gender:female') || 'gender:unknown';\nreturn [{ json: {\n  customer_id: String(customer.id),\n  order_id: source.order_id,\n  gender_tag: gt,\n  existing_customer_tags: customer.tags || '',\n  existing_order_tags: source.existing_order_tags || '',\n  skipped: true\n} }];"
+      },
+      "id": "sgt-reuse-0006",
+      "name": "Reuse Existing Gender Tag",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 260]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 顧客名を整形して Dify 入力用フィールドを作る\nconst source = $('Order Loop').first().json;\nconst customer = $json.customer;\nconst lastName = (customer.last_name || '').trim();\nconst firstName = (customer.first_name || '').trim();\nconst fullName = `${lastName} ${firstName}`.trim();\nlet kana = '';\nconst note = customer.note || '';\nconst km = note.match(/ふりがな[:：]\\s*(.+)/);\nif (km) kana = km[1].trim();\nreturn [{ json: {\n  customer_id: String(customer.id),\n  order_id: source.order_id,\n  full_name: fullName,\n  kana,\n  existing_customer_tags: customer.tags || '',\n  existing_order_tags: source.existing_order_tags || ''\n} }];"
+      },
+      "id": "sgt-format-0007",
+      "name": "Format Name",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.dify.ai/v1/workflows/run",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"inputs\": {\n    \"full_name\": \"{{ $json.full_name }}\",\n    \"kana\": \"{{ $json.kana }}\"\n  },\n  \"response_mode\": \"blocking\",\n  \"user\": \"daily-{{ $json.customer_id }}\"\n}",
+        "options": {
+          "retry": {"maxRetries": 2, "waitBetweenRetries": 2000},
+          "timeout": 30000
+        }
+      },
+      "id": "sgt-dify-0008",
+      "name": "Call Dify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1584, 500],
+      "credentials": {
+        "httpHeaderAuth": {"id": "KHfDBZW9QVgFxKH3", "name": "Dify (Gender Tagging)"}
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dify 出力を parse して gender_tag を確定 (confidence < 0.7 は unknown)\nconst fmt = $('Format Name').first().json;\nlet result = $json?.data?.outputs?.result;\nif (typeof result === 'string') {\n  try { result = JSON.parse(result); } catch (e) { result = {}; }\n}\nconst gender = result?.gender;\nconst confidence = Number(result?.confidence || 0);\nlet gt = 'gender:unknown';\nif (confidence >= 0.7 && (gender === 'male' || gender === 'female')) {\n  gt = `gender:${gender}`;\n}\nreturn [{ json: {\n  ...fmt,\n  gender_tag: gt,\n  raw_gender: gender || 'unknown',\n  raw_confidence: confidence,\n  raw_reason: result?.reason || '',\n  skipped: false\n} }];"
+      },
+      "id": "sgt-parse-0009",
+      "name": "Parse Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1808, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// idempotent merge: 既存タグから gender:* を全部除去してから新タグを append\n// (Reuse Existing / Parse Result の両分岐から来る)\nconst src = $json;\nconst existing = (src.existing_customer_tags || '').split(',').map(t => t.trim()).filter(Boolean).filter(t => !t.startsWith('gender:'));\nexisting.push(src.gender_tag);\nreturn [{ json: {\n  ...src,\n  merged_customer_tags: existing.join(', ')\n} }];"
+      },
+      "id": "sgt-merge-cust-000a",
+      "name": "Merge Customer Tags",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2032, 380]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://kubell.myshopify.com/admin/api/2026-04/customers/{{$json.customer_id}}.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customer\": {\n    \"id\": {{ $json.customer_id }},\n    \"tags\": \"{{ $json.merged_customer_tags }}\"\n  }\n}",
+        "options": {
+          "retry": {"maxRetries": 3, "waitBetweenRetries": 1500},
+          "timeout": 15000
+        }
+      },
+      "id": "sgt-putcust-000b",
+      "name": "Update Customer Tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2256, 380],
+      "credentials": {
+        "shopifyOAuth2Api": {"id": "cPc8Q4etwvXhA5vJ", "name": "Shopify Account"}
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Shopify の customer response を破棄して Merge Customer Tags の出力 (gender_tag, order_id, existing_order_tags) を引き継ぐ\n// 同時に order tags の idempotent merge も計算\nconst src = $('Merge Customer Tags').first().json;\nconst existingOrder = (src.existing_order_tags || '').split(',').map(t => t.trim()).filter(Boolean).filter(t => !t.startsWith('gender:'));\nexistingOrder.push(src.gender_tag);\nreturn [{ json: {\n  customer_id: src.customer_id,\n  order_id: src.order_id,\n  gender_tag: src.gender_tag,\n  merged_order_tags: existingOrder.join(', ')\n} }];"
+      },
+      "id": "sgt-restore-000c",
+      "name": "Restore Context + Merge Order Tags",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2480, 380]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://kubell.myshopify.com/admin/api/2026-04/orders/{{$json.order_id}}.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"order\": {\n    \"id\": {{ $json.order_id }},\n    \"tags\": \"{{ $json.merged_order_tags }}\"\n  }\n}",
+        "options": {
+          "retry": {"maxRetries": 3, "waitBetweenRetries": 1500},
+          "timeout": 15000
+        }
+      },
+      "id": "sgt-putorder-000d",
+      "name": "Update Order Tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2704, 380],
+      "credentials": {
+        "shopifyOAuth2Api": {"id": "cPc8Q4etwvXhA5vJ", "name": "Shopify Account"}
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Shopify API rate limit (2 req/sec) のため 150ms 待機して次の order へ\nawait new Promise(r => setTimeout(r, 150));\nreturn $input.all();"
+      },
+      "id": "sgt-wait-000e",
+      "name": "Wait 150ms",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2928, 380]
+    }
+  ],
+  "connections": {
+    "Schedule: 4:35 AM JST":                {"main": [[{"node": "BigQuery: Get yesterday orders", "type": "main", "index": 0}]]},
+    "BigQuery: Get yesterday orders":       {"main": [[{"node": "Order Loop", "type": "main", "index": 0}]]},
+    "Order Loop": {
+      "main": [
+        [],
+        [{"node": "Get Customer", "type": "main", "index": 0}]
+      ]
+    },
+    "Get Customer":                          {"main": [[{"node": "Has Definitive Gender Tag?", "type": "main", "index": 0}]]},
+    "Has Definitive Gender Tag?": {
+      "main": [
+        [{"node": "Reuse Existing Gender Tag", "type": "main", "index": 0}],
+        [{"node": "Format Name", "type": "main", "index": 0}]
+      ]
+    },
+    "Reuse Existing Gender Tag":             {"main": [[{"node": "Merge Customer Tags", "type": "main", "index": 0}]]},
+    "Format Name":                           {"main": [[{"node": "Call Dify", "type": "main", "index": 0}]]},
+    "Call Dify":                             {"main": [[{"node": "Parse Result", "type": "main", "index": 0}]]},
+    "Parse Result":                          {"main": [[{"node": "Merge Customer Tags", "type": "main", "index": 0}]]},
+    "Merge Customer Tags":                   {"main": [[{"node": "Update Customer Tags", "type": "main", "index": 0}]]},
+    "Update Customer Tags":                  {"main": [[{"node": "Restore Context + Merge Order Tags", "type": "main", "index": 0}]]},
+    "Restore Context + Merge Order Tags":    {"main": [[{"node": "Update Order Tags", "type": "main", "index": 0}]]},
+    "Update Order Tags":                     {"main": [[{"node": "Wait 150ms", "type": "main", "index": 0}]]},
+    "Wait 150ms":                            {"main": [[{"node": "Order Loop", "type": "main", "index": 0}]]}
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tokyo",
+    "errorWorkflow": "V72FkZBDign2AB1y"
+  }
+}

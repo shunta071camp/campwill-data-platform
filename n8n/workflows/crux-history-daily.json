@@ -1,0 +1,146 @@
+{
+  "name": "crux_history_daily",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 5 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule: 5:00 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, -256]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "executeQuery",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "-- 直近 30 日で sessions 上位 50 URL + origin (TOP page)\nWITH top_urls AS (\n  SELECT page_url AS url, sessions, 1 AS priority\n  FROM `campwill-ec.mart.ec_page_ux_health`\n  ORDER BY sessions DESC LIMIT 50\n),\nwith_origin AS (\n  SELECT url, sessions, priority FROM top_urls\n  UNION ALL\n  SELECT 'https://ku-bell.com' AS url, 999999 AS sessions, 0 AS priority\n)\nSELECT url FROM with_origin GROUP BY url ORDER BY MIN(priority), MAX(sessions) DESC",
+        "options": {}
+      },
+      "id": "bq-get-urls",
+      "name": "BigQuery: Get Top URLs",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [464, -256],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://chromeuxreport.googleapis.com/v1/records:queryHistoryRecord",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "Content-Type", "value": "application/json"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ url: $json.url, metrics: ['largest_contentful_paint','interaction_to_next_paint','cumulative_layout_shift','first_contentful_paint','experimental_time_to_first_byte'] }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "neverError": true
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 500
+            }
+          }
+        }
+      },
+      "id": "http-crux",
+      "name": "CrUX History API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [688, -256],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "otT02xMxkED3OAbr",
+          "name": "CrUX API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// CrUX History API レスポンスを日次 timeseries 行に展開\n// 各 URL × 各 collection_period (最大28日) で 1 row\n// 404 (NOT_FOUND) や JSON 不正は debug 行を 1 行 emit (collection_period = snapshot_date)\n\nconst urls = $('BigQuery: Get Top URLs').all();\nconst now = new Date().toISOString();\nconst snapshotDate = new Date(Date.now() + 9*60*60*1000).toISOString().substring(0,10);\nconst rows = [];\n\n// debug 行 builder (raw_payload に エラー詳細を入れる)\nconst emitDebug = (url, payloadStr, note) => {\n  rows.push({\n    snapshot_date:           snapshotDate,\n    url:                     url,\n    form_factor:             'DEBUG_' + (note || 'UNKNOWN'),\n    collection_period_start: snapshotDate,\n    collection_period_end:   snapshotDate,\n    raw_payload:             (payloadStr || '').substring(0, 100000),\n    inserted_at:             now\n  });\n};\n\nconst inputs = $input.all();\nfor (let i = 0; i < inputs.length; i++) {\n  const url = urls[i]?.json?.url;\n  if (!url) continue;\n  const raw = inputs[i].json;\n  let bodyStr = null;\n  if (raw && typeof raw === 'object' && typeof raw.data === 'string') bodyStr = raw.data;\n  else if (typeof raw === 'string') bodyStr = raw;\n  else if (raw && typeof raw === 'object') bodyStr = JSON.stringify(raw);\n  if (!bodyStr || bodyStr.trim() === '') { emitDebug(url, '<empty body>', 'EMPTY'); continue; }\n  let resp;\n  try { resp = JSON.parse(bodyStr); } catch (e) { emitDebug(url, bodyStr, 'PARSE_FAIL'); continue; }\n  if (resp && resp.error)  { emitDebug(url, bodyStr, 'API_ERR_' + (resp.error.code || 'X')); continue; }\n  if (!resp || !resp.record) { emitDebug(url, bodyStr, 'NO_RECORD'); continue; }\n  const record = resp.record;\n  const periods = record.collectionPeriods || [];\n  const metrics = record.metrics || {};\n\n  // metric 名 -> 内部キー\n  const lcp  = metrics.largest_contentful_paint;\n  const inp  = metrics.interaction_to_next_paint;\n  const cls  = metrics.cumulative_layout_shift;\n  const fcp  = metrics.first_contentful_paint;\n  const ttfb = metrics.experimental_time_to_first_byte;\n\n  // 各 metric の percentilesTimeseries.p75s と histogramTimeseries.densities は配列\n  // periods と同じ長さで、indexで対応する\n  const pickDensity = (m, idx, name) => {\n    if (!m || !m.histogramTimeseries) return null;\n    const seriesBin = m.histogramTimeseries.find(b => b.binDescription === name || b.binStart === name);\n    return null;\n  };\n\n  // CrUX histogramTimeseries: each metric has 3 bins (good / needs-improvement / poor)\n  // densities[i] is the density value for period i\n  const getBinDensities = (m) => {\n    if (!m || !m.histogramTimeseries || !Array.isArray(m.histogramTimeseries) || m.histogramTimeseries.length < 3) return [[], [], []];\n    return [\n      m.histogramTimeseries[0]?.densities || [],\n      m.histogramTimeseries[1]?.densities || [],\n      m.histogramTimeseries[2]?.densities || []\n    ];\n  };\n  const getP75 = (m) => {\n    if (!m || !m.percentilesTimeseries || !m.percentilesTimeseries.p75s) return [];\n    return m.percentilesTimeseries.p75s;\n  };\n\n  const lcpBins = getBinDensities(lcp);  // [good[], ni[], poor[]]\n  const inpBins = getBinDensities(inp);\n  const clsBins = getBinDensities(cls);\n  const lcpP75 = getP75(lcp);\n  const inpP75 = getP75(inp);\n  const clsP75 = getP75(cls);\n  const fcpP75 = getP75(fcp);\n  const ttfbP75 = getP75(ttfb);\n\n  for (let p = 0; p < periods.length; p++) {\n    const period = periods[p];\n    const startDate = period.firstDate ? `${period.firstDate.year}-${String(period.firstDate.month).padStart(2,'0')}-${String(period.firstDate.day).padStart(2,'0')}` : null;\n    const endDate   = period.lastDate  ? `${period.lastDate.year}-${String(period.lastDate.month).padStart(2,'0')}-${String(period.lastDate.day).padStart(2,'0')}`   : null;\n    if (!startDate || !endDate) continue;\n\n    const toNum = v => (v === undefined || v === null || v === '') ? null : Number(v);\n\n    rows.push({\n      snapshot_date:           snapshotDate,\n      url:                     url,\n      form_factor:             'ALL_FORM_FACTORS',\n      collection_period_start: startDate,\n      collection_period_end:   endDate,\n      lcp_p75_ms:              toNum(lcpP75[p]),\n      lcp_good_density:        toNum(lcpBins[0][p]),\n      lcp_ni_density:          toNum(lcpBins[1][p]),\n      lcp_poor_density:        toNum(lcpBins[2][p]),\n      inp_p75_ms:              toNum(inpP75[p]),\n      inp_good_density:        toNum(inpBins[0][p]),\n      inp_ni_density:          toNum(inpBins[1][p]),\n      inp_poor_density:        toNum(inpBins[2][p]),\n      cls_p75:                 toNum(clsP75[p]),\n      cls_good_density:        toNum(clsBins[0][p]),\n      cls_ni_density:          toNum(clsBins[1][p]),\n      cls_poor_density:        toNum(clsBins[2][p]),\n      fcp_p75_ms:              toNum(fcpP75[p]),\n      ttfb_p75_ms:              toNum(ttfbP75[p]),\n      raw_payload:             JSON.stringify(resp).substring(0, 100000),\n      inserted_at:             now\n    });\n  }\n}\n\nreturn rows.map(json => ({ json }));\n"
+      },
+      "id": "code-transform",
+      "name": "Transform",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [912, -256]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "raw",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "ec_crux_history_daily",
+          "cachedResultName": "ec_crux_history_daily"
+        },
+        "options": {}
+      },
+      "id": "bq-insert",
+      "name": "BigQuery: Insert raw.ec_crux_history_daily",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [1136, -256],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: 5:00 AM JST":     {"main": [[{"node": "BigQuery: Get Top URLs", "type": "main", "index": 0}]]},
+    "BigQuery: Get Top URLs":    {"main": [[{"node": "CrUX History API", "type": "main", "index": 0}]]},
+    "CrUX History API":          {"main": [[{"node": "Transform", "type": "main", "index": 0}]]},
+    "Transform":                 {"main": [[{"node": "BigQuery: Insert raw.ec_crux_history_daily", "type": "main", "index": 0}]]}
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tokyo",
+    "errorWorkflow": "V72FkZBDign2AB1y"
+  }
+}

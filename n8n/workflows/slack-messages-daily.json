@@ -1,0 +1,177 @@
+{
+  "name": "slack_messages_daily",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule: 3:00 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, -256]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "executeQuery",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "-- 最新 posted_at の Unix timestamp を since として返す。初回は 30日前。\nSELECT\n  IFNULL(CAST(UNIX_SECONDS(MAX(posted_at)) AS STRING),\n         CAST(UNIX_SECONDS(TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)) AS STRING)) AS oldest_ts\nFROM `campwill-ec.raw.ec_slack_messages`",
+        "options": {}
+      },
+      "id": "bq-get-since",
+      "name": "BigQuery: Get oldest_ts",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [464, -256],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://slack.com/api/users.conversations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "types",            "value": "public_channel,private_channel"},
+            {"name": "exclude_archived", "value": "true"},
+            {"name": "limit",            "value": "200"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json", "neverError": true}},
+          "timeout": 60000
+        }
+      },
+      "id": "http-list-channels",
+      "name": "Slack: list channels (bot joined)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [688, -256],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "e6HmFJZvXj23JwQF",
+          "name": "Slack Bot (read)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// users.conversations レスポンスから channel ID 一覧を抽出 → 各 channel を 1 item として下流に\nconst resp = $input.first().json;\nif (!resp || !resp.ok || !Array.isArray(resp.channels)) {\n  throw new Error('Slack users.conversations failed: ' + JSON.stringify(resp).substring(0, 500));\n}\nconst since = $('BigQuery: Get oldest_ts').first().json.oldest_ts;\nreturn resp.channels.map(c => ({\n  json: {\n    channel_id:   c.id,\n    channel_name: c.name,\n    oldest:       since\n  }\n}));\n"
+      },
+      "id": "code-channel-list",
+      "name": "Code: build channel list",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [912, -256]
+    },
+    {
+      "parameters": {
+        "url": "https://slack.com/api/conversations.history",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {"name": "channel", "value": "={{ $json.channel_id }}"},
+            {"name": "oldest",  "value": "={{ $json.oldest }}"},
+            {"name": "limit",   "value": "200"}
+          ]
+        },
+        "options": {
+          "response": {"response": {"responseFormat": "json", "neverError": true}},
+          "timeout": 60000,
+          "batching": {"batch": {"batchSize": 1, "batchInterval": 1500}}
+        }
+      },
+      "id": "http-history",
+      "name": "Slack: conversations.history per channel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1136, -256],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "e6HmFJZvXj23JwQF",
+          "name": "Slack Bot (read)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 各 channel のメッセージ配列を flatten → BQ 行に変換\n// user_name lookup は重い (1000+ users 個別 API) ので user_id だけ保存し、mart 側で別途解決可\n\nconst channelInputs = $('Code: build channel list').all();\nconst histInputs = $input.all();\nconst now = new Date().toISOString();\nconst rows = [];\n\nfor (let i = 0; i < histInputs.length; i++) {\n  const r = histInputs[i].json;\n  if (!r || !r.ok || !Array.isArray(r.messages)) continue;\n  const ch = channelInputs[i]?.json || {};\n  for (const m of r.messages) {\n    if (!m.ts) continue;\n    const ts_sec = parseFloat(m.ts);\n    const posted_at_iso = new Date(ts_sec * 1000).toISOString();\n    const posted_date = new Date((ts_sec * 1000) + 9 * 3600 * 1000).toISOString().substring(0, 10);\n    rows.push({\n      message_ts:      `${ch.channel_id}:${m.ts}`,\n      channel_id:      ch.channel_id,\n      channel_name:    ch.channel_name || null,\n      user_id:         m.user || m.bot_id || null,\n      user_name:       null, // mart 側で別途 lookup\n      text:            (m.text || '').substring(0, 50000),\n      thread_ts:       m.thread_ts || null,\n      is_thread_reply: m.thread_ts != null && m.thread_ts !== m.ts,\n      reactions_json:  Array.isArray(m.reactions) ? JSON.stringify(m.reactions).substring(0, 10000) : null,\n      permalink:       null, // 必要なら chat.getPermalink で別取得\n      posted_at:       posted_at_iso,\n      posted_date:     posted_date,\n      inserted_at:     now\n    });\n  }\n}\n\nreturn rows.map(json => ({ json }));\n"
+      },
+      "id": "code-transform",
+      "name": "Transform",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, -256]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "raw",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "ec_slack_messages",
+          "cachedResultName": "ec_slack_messages"
+        },
+        "options": {}
+      },
+      "id": "bq-insert",
+      "name": "BigQuery: Insert raw.ec_slack_messages",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [1584, -256],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: 3:00 AM JST":                      {"main": [[{"node": "BigQuery: Get oldest_ts", "type": "main", "index": 0}]]},
+    "BigQuery: Get oldest_ts":                    {"main": [[{"node": "Slack: list channels (bot joined)", "type": "main", "index": 0}]]},
+    "Slack: list channels (bot joined)":          {"main": [[{"node": "Code: build channel list", "type": "main", "index": 0}]]},
+    "Code: build channel list":                   {"main": [[{"node": "Slack: conversations.history per channel", "type": "main", "index": 0}]]},
+    "Slack: conversations.history per channel":   {"main": [[{"node": "Transform", "type": "main", "index": 0}]]},
+    "Transform":                                  {"main": [[{"node": "BigQuery: Insert raw.ec_slack_messages", "type": "main", "index": 0}]]}
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tokyo",
+    "errorWorkflow": "V72FkZBDign2AB1y"
+  }
+}

@@ -1,0 +1,175 @@
+{
+  "name": "initiative_extract_daily",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "20 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule: 3:20 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, -256]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "executeQuery",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "-- 昨日 1 日分の Slack + Backlog 「実作業」を統合フォーマットで取得\n-- Backlog の event_ts は status 変更日 → 最新コメント日 → updated_at の優先順 (= 実作業日重視)\n-- backlog issue にコメントが付いていれば、body に「タイトル [状態]」+ 直近 10 件のコメント本文も連結\nWITH backlog_comments_agg AS (\n  SELECT\n    issue_id,\n    STRING_AGG(\n      CONCAT('[', IFNULL(author, '?'), ' @ ', FORMAT_TIMESTAMP('%Y-%m-%d', created_at), '] ', IFNULL(SUBSTR(content, 1, 1000), '')),\n      '\\n--\\n'\n      ORDER BY created_at DESC LIMIT 10\n    ) AS comments_text\n  FROM `campwill-ec.raw.ec_backlog_comments_latest`\n  WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 14 DAY)\n  GROUP BY issue_id\n)\nSELECT 'slack'   AS src, message_ts AS src_id,\n       IFNULL(permalink, '') AS src_url, posted_at AS event_ts,\n       channel_name AS context, IFNULL(user_id, '') AS author,\n       text AS body\nFROM `campwill-ec.raw.ec_slack_messages_latest`\nWHERE posted_date = DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 1 DAY)\nUNION ALL\nSELECT 'backlog' AS src, i.issue_id AS src_id,\n       '' AS src_url,\n       COALESCE(i.status_changed_at, i.last_comment_at, i.updated_at) AS event_ts,\n       IFNULL(i.project_id, '') AS context, IFNULL(i.assignee, '') AS author,\n       CONCAT(IFNULL(i.title, ''), ' [', IFNULL(i.status, ''), ']',\n              IF(c.comments_text IS NOT NULL, CONCAT('\\n--- comments ---\\n', c.comments_text), '')) AS body\nFROM `campwill-ec.raw.ec_backlog_issues_latest` i\nLEFT JOIN backlog_comments_agg c USING (issue_id)\nWHERE DATE(COALESCE(i.status_changed_at, i.last_comment_at, i.updated_at), 'Asia/Tokyo')\n      = DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 1 DAY)",
+        "options": {}
+      },
+      "id": "bq-yesterday-events",
+      "name": "BigQuery: Get yesterday events",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [464, -256],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "executeQuery",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "sqlQuery": "-- 直近 30 日の既存 initiatives を context として渡す (merge 判定用)\nSELECT initiative_id, title, target_metric,\n       FORMAT_DATE('%Y-%m-%d', start_date) AS start_date,\n       category\nFROM `campwill-ec.mart.ec_initiatives`\nWHERE start_date >= DATE_SUB(CURRENT_DATE('Asia/Tokyo'), INTERVAL 30 DAY)\nORDER BY start_date DESC",
+        "options": {}
+      },
+      "id": "bq-existing-initiatives",
+      "name": "BigQuery: Get recent initiatives",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [464, -64],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 入力 (yesterday events) と既存 initiatives を 1 つの prompt にまとめる\nconst events = $('BigQuery: Get yesterday events').all().map(i => i.json);\nconst existing = $('BigQuery: Get recent initiatives').all().map(i => i.json);\n\nconst todayStr = new Date(Date.now() + 9*3600*1000).toISOString().substring(0, 10);\n\nconst systemPrompt = `あなたは CAMPWILL の EC 事業の施策抽出アシスタントです。Slack/Backlog の昨日の発言から、事業施策に該当するものを抽出してください。\n\n# 施策の定義\n売上・集客・CVR・UX・ブランドに影響しうる意図的なアクション。例:\n- LP/サイト: バナー変更、LP 改修、商品ページ修正、導線変更\n- SNS: 投稿内容・時間・頻度の変更、新規アカウント施策\n- 広告: 予算調整、新キャンペーン開始・停止、クリエイティブ変更、入札変更\n- CP (キャンペーン): 送料無料、割引、ポイント、セール\n- メール: Klaviyo 配信、配信時間・セグメント変更、新フロー\n- 商品: 新商品入荷、価格変更、在庫施策、リニューアル\n\n# 除外するもの\n- 雑談、進行連絡、定例報告、単なる質問・感想のみの発言\n- 「やりたい」「やろうかな」「検討中」など未実施の構想 (confidence=low にして除外)\n\n# 各施策について以下を判定\n- category: LP / SNS / 広告 / CP / メール / 商品 / その他\n- title: 簡潔な施策名 (例: TOPバナーを新色訴求に変更)\n- description: 施策の具体的内容 (1-2 文、PII を含めない)\n- start_date: 実施日が明示されていればその日付、なければ発言日を推定値とする (YYYY-MM-DD)\n- end_date: 終了日が明示されていれば (CP 等)、なければ null\n- target_metric: 効果を見るべき指標を 1 つ選ぶ\n    revenue / cvr / klaviyo_cv / other のいずれか (初版は 3 種限定)\n- related_sku: 特定商品の施策なら SKU 名、なければ null\n- related_channel: 特定チャネルの施策ならチャネル名\n    (google_paid / meta_paid / yahoo_paid / microsoft_paid /\n     tiktok_paid / instagram_organic / seo / klaviyo)、なければ null\n- confidence: high (数値や具体的行動が明確) / medium (施策だが内容が曖昧) / low (微妙 or 未実施)\n- confidence_score: 0-1 の数値\n\n# 既存施策との重複判定\n直近 30 日の施策を別途提示するので、新発言が既存施策の続報・同件議論であれば\naction=\"append_source\" として既存 initiative_id を返してください。新規なら action=\"create\"。\n\n# PII 除去\nemail / 電話番号 / 個人を特定する情報は title / description に絶対含めないでください。\n\n# 出力形式\nJSON 配列のみ。コメント・前置き・後置きは一切不要。\n[\n  {\n    \"action\": \"create\",\n    \"source\": \"slack\" or \"backlog\",\n    \"source_id\": \"<元 src_id>\",\n    \"source_url\": \"<元 src_url>\",\n    \"category\": \"...\",\n    \"title\": \"...\",\n    \"description\": \"...\",\n    \"start_date\": \"YYYY-MM-DD\",\n    \"end_date\": null,\n    \"target_metric\": \"revenue\",\n    \"related_sku\": null,\n    \"related_channel\": null,\n    \"confidence\": \"high\",\n    \"confidence_score\": 0.85\n  },\n  {\n    \"action\": \"append_source\",\n    \"existing_initiative_id\": \"...\",\n    \"new_source_ids\": [\"<src_id>\"]\n  }\n]\n`;\n\nconst userPrompt = `今日は ${todayStr} です。以下を分析してください。\n\n## 昨日の発言 (Slack + Backlog 統合、${events.length} 件)\n${JSON.stringify(events.slice(0, 200), null, 2)}\n\n## 直近 30 日の既存施策 (重複判定 context、${existing.length} 件)\n${JSON.stringify(existing.slice(0, 100), null, 2)}\n\nJSON 配列のみで応答してください。`;\n\nreturn [{\n  json: {\n    system: systemPrompt,\n    user:   userPrompt,\n    event_count: events.length\n  }\n}];\n"
+      },
+      "id": "code-build-prompt",
+      "name": "Code: Build prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [688, -160]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "anthropic-version", "value": "2023-06-01"},
+            {"name": "Content-Type",      "value": "application/json"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 8192, temperature: 0, system: $json.system, messages: [{ role: 'user', content: $json.user }] }) }}",
+        "options": {
+          "response": {"response": {"responseFormat": "json", "neverError": true}},
+          "timeout": 120000
+        }
+      },
+      "id": "http-claude",
+      "name": "Anthropic API: messages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [912, -160],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "p7FCjP7Pvtv9IZ1F",
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Claude レスポンス parse → raw.ec_initiatives_raw 行に変換\n// 失敗時は parse_error_flag = TRUE で 1 行だけ debug 行を出力\n\nconst now = new Date().toISOString();\nconst rows = [];\n\nfunction sha1Short(s) {\n  // 簡易 ID 生成 (crypto なしで決定的に)\n  let h = 0;\n  for (let i = 0; i < s.length; i++) {\n    h = ((h << 5) - h) + s.charCodeAt(i);\n    h |= 0;\n  }\n  return ('00000000' + (h >>> 0).toString(16)).slice(-8);\n}\n\nfor (const item of $input.all()) {\n  const resp = item.json;\n  const rawText = JSON.stringify(resp).substring(0, 100000);\n\n  if (!resp || !resp.content || !Array.isArray(resp.content) || resp.content.length === 0) {\n    rows.push({\n      initiative_id:    'parse_err_' + sha1Short(now + rawText.substring(0, 100)),\n      detected_at:      now,\n      action_type:      null, source: null, source_id: null, source_url: null,\n      additional_source_ids: null, category: null, title: null, description: null,\n      start_date: null, end_date: null, target_metric: null,\n      related_sku: null, related_channel: null,\n      confidence: null, confidence_score: null,\n      raw_payload:      rawText,\n      parse_error_flag: true,\n      inserted_at:      now\n    });\n    continue;\n  }\n\n  const text = resp.content.map(c => c.text || '').join('');\n  let arr;\n  try {\n    // Claude が markdown ```json ... ``` で囲む場合がある\n    let cleaned = text.trim();\n    if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/, '');\n    arr = JSON.parse(cleaned);\n    if (!Array.isArray(arr)) throw new Error('not array');\n  } catch (e) {\n    rows.push({\n      initiative_id:    'parse_err_' + sha1Short(now + text.substring(0, 100)),\n      detected_at:      now,\n      raw_payload:      text.substring(0, 100000),\n      parse_error_flag: true,\n      inserted_at:      now\n    });\n    continue;\n  }\n\n  for (const ent of arr) {\n    if (!ent || typeof ent !== 'object') continue;\n    const action = ent.action || 'create';\n    if (action === 'append_source') {\n      // append_source 行は raw に insert しない (KRASULA-190 で修正、KRASULA-189 の根本対応)。\n      // 過去は existing_initiative_id を再利用した空メタ行を push していたが、mart 側 dedup で\n      // 最新空 row が選ばれて施策消失バグの原因になっていた。downstream で append_source は\n      // 使われていないため、Claude の判定結果をそのまま破棄する。\n      continue;\n    }\n    // create\n    const sourceId = ent.source_id || '';\n    const newId = sha1Short((ent.source || '') + '|' + sourceId + '|' + (ent.title || '') + '|' + (ent.start_date || ''));\n    rows.push({\n      initiative_id:         'init_' + newId,\n      detected_at:           now,\n      action_type:           'create',\n      source:                ent.source || null,\n      source_id:             ent.source_id || null,\n      source_url:            ent.source_url || null,\n      additional_source_ids: null,\n      category:              ent.category || null,\n      title:                 ent.title || null,\n      description:           ent.description || null,\n      start_date:            ent.start_date || null,\n      end_date:              ent.end_date || null,\n      target_metric:         ent.target_metric || null,\n      related_sku:           ent.related_sku || null,\n      related_channel:       ent.related_channel || null,\n      confidence:            ent.confidence || null,\n      confidence_score:      typeof ent.confidence_score === 'number' ? ent.confidence_score : null,\n      raw_payload:           JSON.stringify(ent).substring(0, 100000),\n      parse_error_flag:      false,\n      inserted_at:           now\n    });\n  }\n}\n\nreturn rows.map(json => ({ json }));\n"
+      },
+      "id": "code-transform",
+      "name": "Transform Claude response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1136, -160]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "raw",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "ec_initiatives_raw",
+          "cachedResultName": "ec_initiatives_raw"
+        },
+        "options": {}
+      },
+      "id": "bq-insert",
+      "name": "BigQuery: Insert raw.ec_initiatives_raw",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [1360, -160],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: 3:20 AM JST":                    {"main": [[{"node": "BigQuery: Get yesterday events", "type": "main", "index": 0}]]},
+    "BigQuery: Get yesterday events":           {"main": [[{"node": "BigQuery: Get recent initiatives", "type": "main", "index": 0}]]},
+    "BigQuery: Get recent initiatives":         {"main": [[{"node": "Code: Build prompt", "type": "main", "index": 0}]]},
+    "Code: Build prompt":                       {"main": [[{"node": "Anthropic API: messages", "type": "main", "index": 0}]]},
+    "Anthropic API: messages":                  {"main": [[{"node": "Transform Claude response", "type": "main", "index": 0}]]},
+    "Transform Claude response":                {"main": [[{"node": "BigQuery: Insert raw.ec_initiatives_raw", "type": "main", "index": 0}]]}
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tokyo",
+    "errorWorkflow": "V72FkZBDign2AB1y"
+  }
+}
