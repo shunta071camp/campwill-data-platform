@@ -55,30 +55,56 @@ order_resolved AS (
     COALESCE(utm_content,  REGEXP_EXTRACT(landing_site, r'[?&]utm_content=([^&]+)'))  AS utm_content_resolved
   FROM order_agg
 ),
+order_signals AS (
+  SELECT
+    *,
+    LOWER(utm_source_resolved)                                                    AS src,
+    LOWER(utm_medium_resolved)                                                    AS med,
+    -- 自動タグ付けの広告クリック ID。無料リスティングには付かない
+    REGEXP_CONTAINS(COALESCE(landing_site, ''), r'[?&](gclid|gbraid|wbraid)=')     AS has_gclick,
+    REGEXP_CONTAINS(COALESCE(landing_site, ''), r'[?&]msclkid=')                   AS has_msclick,
+    REGEXP_EXTRACT(referring_site, r'https?://([^/?#:]+)')                         AS ref_host
+  FROM order_resolved
+),
 order_with_channel AS (
-  -- ec_attribution_first_last:11-29 と同じ channel 分類ロジック
+  -- v2.1 (2026-10-08): 'other' 27% を解消。全 attribution mart はこの列を参照する
   SELECT
     *,
     CASE
-      WHEN utm_source_resolved = 'klaviyo'                                              THEN 'email_klaviyo'
-      WHEN utm_medium_resolved IN ('cpc','paid','paidsearch','ppc','dg','pmx')
-        AND utm_source_resolved = 'google'                                              THEN 'google_paid'
-      WHEN utm_medium_resolved IN ('cpc','paid','social','organic_social')
-        AND utm_source_resolved IN ('facebook','fb','instagram','ig','meta','ig.me')   THEN 'meta_paid'
-      WHEN utm_medium_resolved IN ('cpc','paid','dsa')
-        AND utm_source_resolved = 'yahoo'                                               THEN 'yahoo_paid'
-      WHEN utm_medium_resolved IN ('cpc','paid')
-        AND utm_source_resolved IN ('bing','microsoft')                                 THEN 'microsoft_paid'
-      WHEN referring_site LIKE '%instagram.com%' AND utm_medium_resolved IS NULL        THEN 'instagram_organic'
-      WHEN referring_site LIKE '%google.com%'    AND utm_medium_resolved IS NULL        THEN 'seo_google'
-      WHEN referring_site LIKE '%yahoo.co.jp%'   AND utm_medium_resolved IS NULL        THEN 'seo_yahoo'
-      WHEN referring_site LIKE '%bing.com%'      AND utm_medium_resolved IS NULL        THEN 'seo_bing'
-      WHEN referring_site LIKE '%youtube.com%'   AND utm_medium_resolved IS NULL        THEN 'social_youtube'
-      WHEN referring_site IS NULL AND utm_source_resolved IS NULL AND landing_site IS NULL THEN 'unknown'
-      WHEN referring_site IS NULL AND utm_source_resolved IS NULL                       THEN 'direct'
+      WHEN src = 'klaviyo'                                                                   THEN 'email_klaviyo'
+      -- ショッピング/P-MAX 広告は Shopify の商品フィード URL (product_sync / sag_organic) に着地するため、
+      -- utm だけでは無料リスティングと区別できない。広告クリック ID の有無で判別する
+      WHEN src = 'google' AND med IN ('product_sync','shop','shopping') AND has_gclick       THEN 'google_paid'
+      WHEN src = 'google' AND med IN ('product_sync','shop','shopping')                      THEN 'google_shopping_free'
+      WHEN src = 'google' AND med IN ('cpc','paid','paidsearch','ppc','dg','pmx')            THEN 'google_paid'
+      WHEN src IN ('bing','microsoft') AND med IN ('product_sync','shop','shopping') AND has_msclick THEN 'microsoft_paid'
+      WHEN src IN ('bing','microsoft') AND med IN ('product_sync','shop','shopping')         THEN 'microsoft_shopping_free'
+      WHEN src IN ('bing','microsoft') AND med IN ('cpc','paid','pmx')                       THEN 'microsoft_paid'
+      WHEN src = 'yahoo' AND med IN ('cpc','paid','dsa','display')                           THEN 'yahoo_paid'
+      WHEN src LIKE 'tiktok%' AND med IN ('cpc','paid','social','ads')                       THEN 'tiktok_paid'
+      WHEN med = 'organic_social' AND src IN ('ig','instagram')                              THEN 'instagram_organic'
+      WHEN med = 'organic_social' AND src IN ('yt','youtube')                                THEN 'social_youtube'
+      -- th=Threads / an=Audience Network / msg=Messenger / 未展開マクロ も Meta 広告の配信面
+      WHEN med IN ('cpc','paid','social')
+        AND src IN ('facebook','fb','instagram','ig','meta','ig.me','th','an','msg','{{site_source_name}}') THEN 'meta_paid'
+      WHEN src = 'line'                                                                      THEN 'line'
+      WHEN REGEXP_CONTAINS(COALESCE(src, '') || ' ' || COALESCE(ref_host, ''),
+                           r'chatgpt|openai|perplexity|gemini\.google|copilot|claude\.ai')   THEN 'ai_referral'
+      WHEN med IS NULL AND REGEXP_CONTAINS(ref_host, r'instagram\.com$')                     THEN 'instagram_organic'
+      WHEN med IS NULL AND REGEXP_CONTAINS(ref_host, r'(^|\.)google\.(com|co\.jp)$')         THEN 'seo_google'
+      WHEN med IS NULL AND REGEXP_CONTAINS(ref_host, r'yahoo\.co\.jp$')                      THEN 'seo_yahoo'
+      WHEN med IS NULL AND REGEXP_CONTAINS(ref_host, r'bing\.com$')                          THEN 'seo_bing'
+      WHEN med IS NULL AND REGEXP_CONTAINS(ref_host, r'youtube\.com$')                       THEN 'social_youtube'
+      WHEN med IS NULL AND REGEXP_CONTAINS(ref_host,
+             r'duckduckgo|search\.brave|docomo\.ne\.jp|auone\.jp|search\.nifty|websearch\.rakuten|biglobe\.ne\.jp|ecosia') THEN 'seo_other'
+      -- 自サイト内遷移 (checkout 再訪など) は流入元ではない
+      WHEN src IS NULL AND REGEXP_CONTAINS(ref_host, r'(^|\.)ku-bell\.com$')                 THEN 'direct'
+      WHEN referring_site IS NULL AND src IS NULL AND landing_site IS NULL                   THEN 'unknown'
+      WHEN referring_site IS NULL AND src IS NULL                                            THEN 'direct'
+      WHEN med = 'referral' OR (src IS NULL AND ref_host IS NOT NULL)                        THEN 'referral'
       ELSE 'other'
     END AS channel_classified
-  FROM order_resolved
+  FROM order_signals
 ),
 ga_purchases AS (
   -- 1 transaction_id に複数 purchase event 入ることがあるので最初のみ採用

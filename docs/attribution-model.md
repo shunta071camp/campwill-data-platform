@@ -18,6 +18,19 @@
 
 ## 現行モデル v2.0 (2026-05-19 制定、Klaviyo Events per-order override)
 
+### channel_classified の値 (v2.1)
+
+| 区分 | 値 |
+|---|---|
+| 有料 (ad_cost あり) | `google_paid` / `meta_paid` / `yahoo_paid` / `microsoft_paid` / `tiktok_paid` |
+| 無料ショッピング | `google_shopping_free` / `microsoft_shopping_free` (Merchant Center 無料リスティング) |
+| 自然検索 | `seo_google` / `seo_yahoo` / `seo_bing` / `seo_other` |
+| SNS・その他 | `instagram_organic` / `social_youtube` / `line` / `ai_referral` / `referral` |
+| メール | `email_klaviyo` (+ Klaviyo 5 日 click carve) |
+| 不明 | `direct` / `unknown` / `other` (other は 0.5% 程度が正常) |
+
+**判別ルールの要点**: utm_medium=product_sync/shop/shopping は Shopify の商品フィード URL で、有料のショッピング/P-MAX 広告でも無料リスティングでも同じ値になる。landing_site に広告クリック ID (gclid/gbraid/wbraid、Microsoft は msclkid) があれば有料、なければ無料と判定する (自動タグ付けは広告クリックにのみ付与されるため)。
+
 ### 採用ルール
 
 1. **Shopify last-touch (`channel_classified`) を基底**
@@ -91,6 +104,7 @@ Klaviyo の attribution methodology を確認した結果、以下が判明:
 
 | Version | Date | Author | Change | Rationale |
 |---|---|---|---|---|
+| 2.1 | 2026-10-08 | s_miyazaki | **channel_classified の分類漏れ解消** ('other' 27% → 0.5%)。(1) Google/Microsoft のショッピング・P-MAX 流入 (utm_medium=product_sync/shop/shopping) を **広告クリック ID (gclid/gbraid/wbraid/msclkid) の有無で有料/無料に判別** し、`google_paid` / `google_shopping_free` (新設) 等へ (2) yahoo/display → `yahoo_paid`、bing/pmx → `microsoft_paid` (3) ig・yt/organic_social を meta_paid から `instagram_organic` / `social_youtube` へ (4) Meta 配信面 (th/an/msg/未展開マクロ) を meta_paid に (5) `line` / `ai_referral` / `seo_other` / `referral` / `tiktok_paid` を新設 (6) 自サイト referrer (ku-bell.com) を direct に、google.co.jp を seo_google に (7) ec_customer_profile の独自 CASE を廃止し本列を参照 (8) ec_channel_roi に TikTok 広告費を接続 | BQ 計測監査で 'other' の正体が判明。Shopify の商品フィード URL (sag_organic) は有料ショッピング広告でも無料リスティングでも同じ utm になるため、utm だけでは判別不能だった。結果、Google 広告の売上が約 3 割過小計上 (9月 ROAS 3.57 → 4.57)、無料リスティング (売上の約 9%) が不可視、Yahoo ディスプレイの売上が未計上 (広告費だけ計上) だった |
 | 2.0.1 | 2026-07-07 | s_miyazaki | **v2.0 モデルを ec_channel_roi / ec_attribution_first_last に横展開して統一**。両 mart は独自 CASE 分類を廃止し `ec_order_enriched.channel_classified` + `klaviyo_clicked_within_5d` を採用。合わせて `ec_klaviyo_conversion` は last-click 5d attribution 方式に全面刷新 (旧 profile join 単純合算は 45〜360 倍過大集計) | BQ 全体 audit で ec_channel_roi と ec_channel_attribution_weekly の revenue 総額が 20〜30% 系統ズレ発覚。source が違うため必然的に drift。全 attribution mart を single source (ec_order_enriched) に統一して未来永劫の drift を防ぐ |
 | 2.0 | 2026-05-19 | s_miyazaki | **Klaviyo Events API 取り込み開始**、per-order override 方式に転換。Click within 5d で email_klaviyo に再分類。集約 carve は廃止 | クロスチャネル過小評価 (Google ad → Klaviyo click → 購入 等) を per-order レベルで捕捉。Klaviyo dashboard と同じ click+5d 基準で組織内議論しやすく |
 | 1.2 | 2026-05-19 | s_miyazaki | `raw.ec_google_ads` view を AccountBasicStats ベースに修正 (旧 CampaignBasicStats × Campaign INNER JOIN で 90% の cost が落ちていた)。google_paid の ROAS が 59x → 3.5x の現実的水準に補正 | 旧 view は campaign メタ作成日より古い stats date が JOIN 条件で消えていた。campaign 別ブレイクダウンは downstream で未使用だったため AccountBasicStats で集約に切替 |

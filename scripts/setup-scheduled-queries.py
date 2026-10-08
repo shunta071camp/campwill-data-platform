@@ -65,7 +65,15 @@ BASE_URL = "https://bigquerydatatransfer.googleapis.com/v1"
 
 
 def get_token() -> str:
-    return subprocess.run([GCLOUD, "auth", "print-access-token"], capture_output=True, text=True).stdout.strip()
+    # gcloud CLI のユーザートークンは定期的に再ログインを要求するため、ADC を優先する
+    try:
+        import google.auth
+        import google.auth.transport.requests
+        creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        creds.refresh(google.auth.transport.requests.Request())
+        return creds.token
+    except Exception:
+        return subprocess.run([GCLOUD, "auth", "print-access-token"], capture_output=True, text=True).stdout.strip()
 
 
 def api(method: str, path: str, token: str, body: dict | None = None):

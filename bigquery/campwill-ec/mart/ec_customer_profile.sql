@@ -5,37 +5,30 @@
 --   - SUM/AVG on total_price や COUNTIF on tags は order 単位 dedup 必須
 --   - SKU 関連 (sku_rank) は line grain 保持
 --   - 対策: orders_with_channel は line-grain のまま、orders_dedup を新設して集計は dedup 経由
+--
+-- channel は独自 CASE を持たず ec_order_enriched.channel_classified + Klaviyo 5d carve を参照
+-- (v2.1 統一。順序: 22:30 enriched → 23:20 customer_profile)
 
 CREATE OR REPLACE TABLE `campwill-ec.mart.ec_customer_profile` AS
-WITH orders_with_channel AS (
+WITH order_channel AS (
   SELECT
-    customer_email,
-    customer_id,
     order_id,
-    order_date,
-    total_price,
-    sku,
-    tags,
-    CASE
-      WHEN COALESCE(utm_source, REGEXP_EXTRACT(landing_site, r'[?&]utm_source=([^&]+)')) = 'klaviyo' THEN 'email_klaviyo'
-      WHEN COALESCE(utm_medium, REGEXP_EXTRACT(landing_site, r'[?&]utm_medium=([^&]+)')) IN ('cpc','paid','paidsearch','ppc','dg','pmx')
-        AND COALESCE(utm_source, REGEXP_EXTRACT(landing_site, r'[?&]utm_source=([^&]+)')) = 'google' THEN 'google_paid'
-      WHEN COALESCE(utm_medium, REGEXP_EXTRACT(landing_site, r'[?&]utm_medium=([^&]+)')) IN ('cpc','paid','social','organic_social')
-        AND COALESCE(utm_source, REGEXP_EXTRACT(landing_site, r'[?&]utm_source=([^&]+)')) IN ('facebook','fb','instagram','ig','meta','ig.me') THEN 'meta_paid'
-      WHEN COALESCE(utm_medium, REGEXP_EXTRACT(landing_site, r'[?&]utm_medium=([^&]+)')) IN ('cpc','paid','dsa')
-        AND COALESCE(utm_source, REGEXP_EXTRACT(landing_site, r'[?&]utm_source=([^&]+)')) = 'yahoo' THEN 'yahoo_paid'
-      WHEN COALESCE(utm_medium, REGEXP_EXTRACT(landing_site, r'[?&]utm_medium=([^&]+)')) IN ('cpc','paid')
-        AND COALESCE(utm_source, REGEXP_EXTRACT(landing_site, r'[?&]utm_source=([^&]+)')) IN ('bing','microsoft') THEN 'microsoft_paid'
-      WHEN referring_site LIKE '%instagram.com%' AND utm_medium IS NULL THEN 'instagram_organic'
-      WHEN referring_site LIKE '%google.com%'    AND utm_medium IS NULL THEN 'seo_google'
-      WHEN referring_site LIKE '%yahoo.co.jp%'   AND utm_medium IS NULL THEN 'seo_yahoo'
-      WHEN referring_site LIKE '%bing.com%'      AND utm_medium IS NULL THEN 'seo_bing'
-      WHEN referring_site LIKE '%youtube.com%'   AND utm_medium IS NULL THEN 'social_youtube'
-      WHEN referring_site IS NULL AND utm_source IS NULL THEN 'direct'
-      ELSE 'other'
-    END AS channel
-  FROM `campwill-ec.raw.ec_shopify_orders`
-  WHERE customer_email IS NOT NULL
+    CASE WHEN klaviyo_clicked_within_5d THEN 'email_klaviyo' ELSE channel_classified END AS channel
+  FROM `campwill-ec.mart.ec_order_enriched`
+),
+orders_with_channel AS (
+  SELECT
+    s.customer_email,
+    s.customer_id,
+    s.order_id,
+    s.order_date,
+    s.total_price,
+    s.sku,
+    s.tags,
+    oc.channel
+  FROM `campwill-ec.raw.ec_shopify_orders` s
+  LEFT JOIN order_channel oc USING (order_id)
+  WHERE s.customer_email IS NOT NULL
 ),
 sku_rank AS (
   SELECT

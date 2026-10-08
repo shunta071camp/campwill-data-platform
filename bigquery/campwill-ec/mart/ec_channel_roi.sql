@@ -29,6 +29,8 @@ ad_costs AS (
   SELECT date, 'yahoo_paid'     AS channel, SUM(cost) AS ad_cost FROM yahoo_dedup                       GROUP BY date
   UNION ALL
   SELECT date, 'microsoft_paid' AS channel, SUM(cost) AS ad_cost FROM microsoft_dedup                   GROUP BY date
+  UNION ALL
+  SELECT date, 'tiktok_paid'    AS channel, SUM(cost) AS ad_cost FROM `campwill-ec.raw.ec_tiktok_ads_latest` GROUP BY date
 ),
 -- ec_order_enriched を source に (v2.0 channel_classified + Klaviyo carve と統一)
 shopify_by_channel AS (
