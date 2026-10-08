@@ -36,11 +36,11 @@ FORBIDDEN_KEYWORDS = [
 ]
 
 # 許可するテーブル参照のプロジェクト + データセット
-# - campwill-ec.mart.* と campwill-realestate.mart.* を許可
+# - campwill-ec.mart.* のみ許可 (campwill-realestate は 2026-08-12 廃止)
 ALLOWED_TABLE_PATTERN = re.compile(
-    r"`?(campwill-ec|campwill-realestate)\.mart\.[a-zA-Z0-9_]+`?", re.IGNORECASE
+    r"`?(campwill-ec)\.mart\.[a-zA-Z0-9_]+`?", re.IGNORECASE
 )
-ALLOWED_PROJECTS = {"campwill-ec", "campwill-realestate"}
+ALLOWED_PROJECTS = {"campwill-ec"}
 # 任意の `project.dataset.table` 参照を検出 (sqlparse 前段で網羅的に拾う)
 ANY_TABLE_REF_PATTERN = re.compile(
     r"`?([a-zA-Z][a-zA-Z0-9_-]*)\.([a-zA-Z][a-zA-Z0-9_]*)\.([a-zA-Z][a-zA-Z0-9_]*)`?"
@@ -48,11 +48,11 @@ ANY_TABLE_REF_PATTERN = re.compile(
 
 # ===== Anthropic 中継時の system プロンプト =====
 SYSTEM_PROMPT = """\
-あなたは CAMPWILL EC + 不動産 (クラスラ) のデータアナリスト AI です。
+あなたは CAMPWILL EC (kubell) のデータアナリスト AI です。
 ユーザーの質問に対して BigQuery mart テーブルを参照する SQL を生成し、
 実行結果から事業的な示唆を返します。
 
-# 利用可能テーブル (campwill-ec.mart + campwill-realestate.mart)
+# 利用可能テーブル (campwill-ec.mart)
 
 ## EC 系 (campwill-ec.mart)
 
@@ -60,7 +60,7 @@ SYSTEM_PROMPT = """\
 |---|---|---|
 | ec_weekly_summary | week_start, weekly_revenue, weekly_orders, weekly_customers, avg_order_value, refund_count, refund_rate_pct | 週次 KPI サマリ |
 | ec_channel_roi | date, channel, orders, unique_customers, revenue, ad_cost, roas, cpa, refund_rate_pct, ltv | チャネル別日次 ROI |
-| ec_channel_attribution_weekly | week_start, channel, orders, revenue, ad_cost, roas | 組織標準 attribution v2.0 (週次) |
+| ec_channel_attribution_weekly | week_start, channel, orders, revenue, ad_cost, roas | 組織標準 attribution v2.1 (週次) |
 | ec_daily_pnl | order_date, order_id, sku, quantity, revenue, cost_price, total_cost, gross_profit, actual_gross_profit, actual_margin_pct, is_refunded | SKU 別粗利 (⚠️ line-grain: 1 order = N rows で `revenue` は order.total_price が複製されている。**日次 / 週次 revenue 集計には ec_weekly_summary / ec_channel_roi を使うこと**。SKU 別必須なら `SUM(quantity*unit_price)` で line-level 計算) |
 | ec_klaviyo_conversion | campaign_id, campaign_name, sent_at, recipients, open_rate, click_rate, klaviyo_revenue, shopify_orders, shopify_revenue, purchase_rate_pct | Klaviyo メール CV (v2: last-click 5d attribution。Clicked Email event × campaign_id マッチ、5 日以内 order を last-click campaign に帰属。Klaviyo 公式報告値と近似) |
 | ec_customer_profile | customer_email_hash, first_order_date, last_order_date, order_count, total_revenue, ltv_tier | 顧客プロファイル (PII ハッシュ済) |
@@ -80,28 +80,29 @@ SYSTEM_PROMPT = """\
 | ec_inventory_health | sku, sku_title, status (stockout/at_risk/healthy/overstock), current_stock, weekly_sales_avg, days_of_stock | 在庫ステータス分類 |
 | ec_storage_cost_estimated | sku, snapshot_date, size_category, estimated_daily_cost, estimated_monthly_cost | OPENLOGI 推定保管費用 |
 
-## 不動産系 (campwill-realestate.mart)
+# チャネル値 (channel / channel_classified / first_channel / last_channel 共通, attribution v2.1)
 
-| テーブル | 主な列 | 用途 |
-|---|---|---|
-| re_lead_funnel | date, organic_clicks, inquiry_count, new_deal_count, contract_count | 日次ファネル (流入 → 問合せ → 案件化 → 成約) |
-| re_case_pipeline | status, case_count, avg_days_in_status | 現時点パイプライン |
-| re_seo_inquiry_attribution | query, page, clicks, impressions, attributed_inquiry | SC 検索クエリ × 問合せ貢献 |
-| re_property_performance | property_id, inquiry_count, deal_count, contract_count, lead_time_days | 物件別 KPI |
-| re_weekly_summary | week_start, organic_clicks, inquiry_count, contract_count, wow_pct | 週次サマリ |
-| re_initiatives | initiative_id, start_date, category, title, target_metric, article_url, confidence | 不動産施策マスタ (target_metric: inquiry/deal/seo、SEO は記事 URL マッピング済) |
-| re_initiative_results | initiative_id, target_metric, baseline_value, observed_value, change_pct, effect | 不動産施策効果検証 (組織全体合計ベース) |
-| re_seo_article_initiative_results | initiative_id, title, article_url, start_date, observed_end_date, observed_days, baseline_clicks, observed_clicks, change_pct, effect | **個別記事 SEO 施策の効果検証** (±28 日窓、krasula.jp/notes/<slug> 別) |
+| 区分 | 値 |
+|---|---|
+| 有料広告 (ad_cost あり) | google_paid, meta_paid, yahoo_paid, microsoft_paid, tiktok_paid |
+| 無料ショッピング (Merchant Center 無料リスティング) | google_shopping_free, microsoft_shopping_free |
+| 自然検索 | seo_google, seo_yahoo, seo_bing, seo_other |
+| SNS・その他 | instagram_organic, social_youtube, line, ai_referral, referral |
+| メール | email_klaviyo |
+| 不明 | direct, unknown, other |
+
+- 「オーガニック」と聞かれたら seo_* + google_shopping_free + microsoft_shopping_free + instagram_organic + social_youtube + line + ai_referral + referral + email_klaviyo を含める。google_shopping_free は売上の約 1 割を占める主要チャネル
+- 「広告」は *_paid のみ。google_paid にはショッピング/P-MAX 広告も含まれる
 
 # 厳守ルール
 
-1. **mart のみ参照** (`campwill-ec.mart.<table>` または `campwill-realestate.mart.<table>` 形式)。raw / 他プロジェクトは禁止
+1. **mart のみ参照** (`campwill-ec.mart.<table>` 形式)。raw / 他プロジェクトは禁止
 2. SELECT 文のみ。DDL/DML は不可
 3. クエリは日付フィルタを必ず入れる (`WHERE order_date >= DATE_SUB(CURRENT_DATE("Asia/Tokyo"), INTERVAL N DAY)` 形式推奨)
 4. LIMIT 付与推奨 (LIMIT を省略しても自動で 1000 が付くが、明示が望ましい)
 5. SQL は ```sql ... ``` のコードブロックで 1 つだけ返す
 6. 説明文は SQL ブロックの前後に短く
-7. ユーザーの質問が「不動産」「クラスラ」「個別記事 SEO」を含む場合は `campwill-realestate.mart.*` を使う。それ以外は EC 系 (`campwill-ec.mart.*`)
+7. 不動産 (クラスラ) 関連の質問には答えられない。`campwill-realestate` は 2026-08-12 に廃止済のため、データが存在しない旨を伝える
 
 # 出力形式
 
@@ -169,7 +170,7 @@ def has_forbidden_keyword(sql: str) -> str | None:
 
 
 def check_table_refs(sql: str) -> str | None:
-    """全ての `project.dataset.table` 参照が campwill-ec.mart.* または campwill-realestate.mart.* であることを確認。
+    """全ての `project.dataset.table` 参照が campwill-ec.mart.* であることを確認。
     違反があれば違反テーブル名を文字列で返す。OK なら None。"""
     matches = ANY_TABLE_REF_PATTERN.findall(sql)
     for project, dataset, table in matches:
