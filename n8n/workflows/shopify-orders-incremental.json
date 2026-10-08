@@ -30,7 +30,7 @@
           "value": "campwill-ec",
           "cachedResultName": "campwill-ec"
         },
-        "sqlQuery": "SELECT FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', IFNULL(MAX(created_at), TIMESTAMP('2020-01-01'))) AS last_created_at FROM `campwill-ec.raw.ec_shopify_orders`",
+        "sqlQuery": "SELECT FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', TIMESTAMP_ADD(IFNULL(MAX(created_at), TIMESTAMP('2020-01-01')), INTERVAL 1 SECOND)) AS last_created_at FROM `campwill-ec.raw.ec_shopify_orders`",
         "options": {
           "useLegacySql": false
         }
