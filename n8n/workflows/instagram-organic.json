@@ -45,7 +45,12 @@
           ]
         },
         "options": {
-          "response": {"response": {"responseFormat": "json", "neverError": true}},
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": true
+            }
+          },
           "timeout": 30000
         }
       },
@@ -100,7 +105,12 @@
               "batchInterval": 2000
             }
           },
-          "response": {"response": {"responseFormat": "json", "neverError": true}},
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": true
+            }
+          },
           "timeout": 30000
         }
       },
@@ -118,7 +128,10 @@
           "name": "Meta Graph API"
         }
       },
-      "notes": "1 メディアごとに Insights API を叩くので、件数が多いとレート制限に注意。batchInterval=1000 で 1秒スロットリング。"
+      "notes": "1 メディアごとに Insights API を叩くので、件数が多いとレート制限に注意。batchInterval=1000 で 1秒スロットリング。",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "parameters": {
