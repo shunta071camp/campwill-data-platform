@@ -247,11 +247,9 @@ ORDER BY week_start DESC, revenue DESC;
 - `microsoft-ads-incremental` (毎日 03:10 JST、2 日 lookback 設計。post-insert cleanup で dedup 自動化済)
 - `yahoo-ads-incremental` (毎日 03:20 JST、2 日 lookback 設計。post-insert cleanup で dedup 自動化済)
 - `rakko-inflow-weekly` (月曜 04:00 JST)
-- `clarity-metrics-daily` (毎日 10:00 JST、1 call/day = Channel dim。Clarity API は dim パラメータを無視して常に Channel breakdown を返すため元 6 dim 呼びは全て同一結果を返していた。ec_ux_health 廃止に合わせて 1 回に集約、quota 節約)
 - `klaviyo-events-daily` (毎日 04:15 JST、Clicked Email events → attribution per-order tag)
 - `crux-history-daily` (毎日 05:00 JST、CrUX History API 経由 URL 別 Core Web Vitals → ec_page_ux_health の Web Vitals 列ソース)
 - `judgeme-reviews-daily` (毎日 03:30 JST、Judge.me /api/v1/reviews → ec_judgeme_reviews、初回 backfill 729 件)
-- `tiktok-ads` (毎日 03:15 JST、TikTok Marketing API /report/integrated/get → ec_tiktok_ads、TikTok stat_time_day 制限 28 日 rolling)
 - `slack-messages-daily` (毎日 03:00 JST、Bot が join した channel の昨日分 → raw.ec_slack_messages、施策抽出元)
 - `backlog-issues-daily` (毎日 03:10 JST、updatedSince 差分 → raw.ec_backlog_issues、施策抽出元)
 - `initiative-extract-daily` (毎日 03:20 JST、EC 系 Slack+Backlog → Claude API → raw.ec_initiatives_raw)
@@ -263,8 +261,10 @@ ORDER BY week_start DESC, revenue DESC;
 
 非稼働 (deactivated):
 - `openlogi-inventory-daily` (倉庫を OPENLOGI → はぴロジへ移管したため、2026-10-09 停止。はぴロジ API 有無は確認中)
-- `slack_to_google_sheets` (Webhook trigger、Slack app 側呼び出し無し、2026-07-07 deactivate)
-- `shopify-customers-daily` (対応する raw table 削除済、2026-07-07 deactivate)
+- `clarity-metrics-daily` (Clarity API の仕様変更で Dead Click しか取れず、参照する mart も無いため 2026-10-09 停止)
+- `tiktok-ads` (TikTok 広告が 2026-09 から配信停止のため 2026-10-09 停止。再開時は有効化するだけで良い)
+
+アーカイブ済 (2026-10-09、n8n UI の Archived から復元可): 使い捨て診断 `zz診断` 6 本、`[TEST]` 4 本、`My workflow` 1〜3、旧コピー (`MicrosoftAds_increment` / `ZoomAIComanionTranscript` の停止版)、`slack_to_google_sheets`、`shopify-customers-daily`、`Shopify Gender Tagging - Main` (日次バッチ版に置換済)
 
 削除済:
 - `re_slack_messages_daily` / `re_backlog_issues_daily` / `re_initiative_extract_daily` (campwill-realestate 廃止に伴い 2026-08-12 削除)
