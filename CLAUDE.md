@@ -1,6 +1,6 @@
 # CAMPWILL Data Platform — Claude Code / Codex 利用ガイド
 
-このリポジトリは CAMPWILL の EC・不動産事業のデータ基盤（BigQuery + n8n + Claude API）。Claude Code / Codex で BigQuery を扱うときの前提を以下にまとめる。
+このリポジトリは CAMPWILL の EC 事業のデータ基盤（BigQuery + n8n + Claude API）。Claude Code / Codex で BigQuery を扱うときの前提を以下にまとめる。
 
 ---
 
@@ -9,8 +9,10 @@
 | GCP プロジェクト | 用途 | 状態 |
 |---|---|---|
 | `campwill-ec` | EC 事業（kubell）— raw 23 テーブル + 12 view、mart 25 テーブル + 1 view、Scheduled Query 22 本稼働中 | **稼働中** |
-| `campwill-realestate` | 不動産事業（クラスラ）— raw 9 テーブル + 4 view、mart 8 テーブル、Scheduled Query 8 本、自社案件管理 (tenant-leasing) + GA4 + SC | **稼働中** |
+| `campwill-realestate` | 不動産事業（クラスラ）| **廃止**（2026-08-12 プロジェクト削除） |
 | `campwill-central` | 全社横断（Phase 3） | placeholder |
+
+> `campwill-realestate` は 2026-08-12 に廃止。データソースだった案件管理システム tenant-leasing (Render) の解約に伴い、BigQuery 4 データセット（raw / mart / GA4 export / searchconsole）・Scheduled Query 8 本・n8n 3 本（`re_*`）・関連 SQL を全て削除した。不動産系の記述が残っていたら過去の遺物。
 
 - ロケーション: **`asia-northeast1`**（東京）固定。GA4 Export と一致が必須
 - 日次バッチは UTC 23:00–23:55（JST 08:00–08:55）に集中
@@ -47,41 +49,11 @@
 | `ec_instagram_organic` | Instagram オーガニック投稿の日次スナップショット (Meta Graph API v21.0 経由)。直近 30 日、累計 metric。`impressions` 列は実際は Reels の `views` を格納 (Meta が 2024 年に rename) | reach, views, likes, comments, saves, engagement_rate |
 | `ec_backlog_issues` | Backlog 課題 | |
 | `rakko_inflow_keywords` | ラッコ KW（自社+競合 7URL × 週次） | |
-| `ec_openlogi_inventory_daily` | OPENLOGI 在庫日次スナップショット | |
+| `ec_openlogi_inventory_daily` | OPENLOGI 在庫日次スナップショット (**2026-09 にはぴロジへ倉庫移管、以降は全 SKU 0。取り込み停止中**) | |
 | `ec_clarity_metrics_daily` | Microsoft Clarity UX 指標日次（OVERALL / URL / Source+Device の 3 dimension_set） | |
 | `ec_ga4_purchase` (VIEW) | GA4 purchase event（transaction_id = Shopify order_id） | |
 | `ec_ga4_user_first_session` (VIEW) | GA4 user_pseudo_id 別の最初の session_start | |
 | `oauth_tokens` / `oauth_tokens_history` | n8n の OAuth refresh_token 管理 | **secret** |
-
-### `campwill-realestate.raw` — 不動産生データ（PII 含む）
-
-| テーブル | 内容 | ソース |
-|---|---|---|
-| `re_tenants` | テナント (=問い合わせ起点) | tenant-leasing `/api/export/tenants` |
-| `re_deals` | 案件 (DealStatus enum) | tenant-leasing `/api/export/deals` |
-| `re_activities` | 活動履歴 | tenant-leasing `/api/export/activities` |
-| `re_properties` | 物件 | tenant-leasing `/api/export/properties` |
-| `re_owners` | オーナー | tenant-leasing `/api/export/owners` |
-| `re_slack_messages` / `re_slack_messages_latest` (VIEW) | Slack 社内 message (不動産 Bot 投入 channel、施策抽出元) | n8n `re_slack_messages_daily` |
-| `re_backlog_issues` / `re_backlog_issues_latest` (VIEW) | Backlog 課題 dedup (status 変更追跡) | n8n `re_backlog_issues_daily` |
-| `re_backlog_comments` / `re_backlog_comments_latest` (VIEW) | Backlog コメント dedup | n8n `re_backlog_issues_daily` |
-| `re_initiatives_raw` | Claude API 出力 (施策候補、target_metric は inquiry/deal/seo) | n8n `re_initiative_extract_daily` |
-| `re_search_console` (VIEW) | krasula.jp の SC | SC Bulk Export |
-
-### `campwill-realestate.mart` — 不動産分析用
-
-| テーブル | 用途 |
-|---|---|
-| `re_lead_funnel` | 日次ファネル: 流入 → 問合せ → 案件化 → 成約 |
-| `re_case_pipeline` | 現時点パイプライン (status 別件数 / 平均経過日数) |
-| `re_seo_inquiry_attribution` | SC 検索クエリ × 問合せ貢献 |
-| `re_property_performance` | 物件別 KPI (案件数 / 成約率 / リードタイム) |
-| `re_weekly_summary` | 週次サマリ + WoW 比較 |
-| `re_initiatives` | 施策マスタ (Claude API 抽出、KRASULA-190 で append_source 空 row 除外済) |
-| `re_initiative_results` | 施策の効果検証 (実施日 ±7 日窓で inquiry/deal 前後比較) |
-| `re_seo_article_initiative_results` | 個別記事 SEO 効果分析 (KRASULA-187、±28 日 window で clicks pre/post 比較) |
-
-詳細は [bigquery/campwill-realestate/README.md](bigquery/campwill-realestate/README.md) 参照。
 
 ### `campwill-ec.mart` — 分析用集計済データ（**PII ゼロ** — customer_email は SHA256 hash 化、これを使う）
 
@@ -99,8 +71,8 @@
 | `ec_attribution_first_last` | 顧客 1 行 = 初回 vs 最終流入チャネル (v2.0 準拠: ec_order_enriched.channel_classified + Klaviyo 5d carve 継承、独自 CASE 廃止) |
 | `ec_seo_opportunity` | SEO 機会金額化（SC × Rakko 統合） |
 | `ec_competitor_gap` | 競合のみ獲得 KW（自社未獲得） |
-| `ec_inventory_health` | 在庫ステータス分類 (stockout/at_risk/healthy/overstock 等) |
-| `ec_storage_cost_estimated` | OPENLOGI 推定保管費用 (size_category × 日額) |
+| `ec_inventory_health` | ⚠️ **使用不可** (倉庫移管で OPENLOGI 在庫が 0、SQ 停止中)。在庫ステータス分類 |
+| `ec_storage_cost_estimated` | ⚠️ **使用不可** (同上)。OPENLOGI 推定保管費用 |
 | `ec_page_ux_health` | **Page 別** UX 健康度スコア (engagement_rate/scroll_90/bounce/CV + Web Vitals LCP/INP/CLS、30d 集計、GA4 + CrUX 由来)。商品ページ・LP・記事の改善優先度判断に |
 | `ec_review_enriched` | Judge.me レビュー 1 行 = 1 row の wide fact (PII ゼロ、ec_customer_profile JOIN 済)。商品評価分析・低評価監視・リピーター vs 新規傾向 |
 | `ec_initiatives` | **施策マスタ** (AI 自動抽出、PII 除去済)。Slack/Backlog から Claude が日次抽出 |
@@ -275,7 +247,6 @@ ORDER BY week_start DESC, revenue DESC;
 - `microsoft-ads-incremental` (毎日 03:10 JST、2 日 lookback 設計。post-insert cleanup で dedup 自動化済)
 - `yahoo-ads-incremental` (毎日 03:20 JST、2 日 lookback 設計。post-insert cleanup で dedup 自動化済)
 - `rakko-inflow-weekly` (月曜 04:00 JST)
-- `openlogi-inventory-daily` (毎日 05:00 JST)
 - `clarity-metrics-daily` (毎日 10:00 JST、1 call/day = Channel dim。Clarity API は dim パラメータを無視して常に Channel breakdown を返すため元 6 dim 呼びは全て同一結果を返していた。ec_ux_health 廃止に合わせて 1 回に集約、quota 節約)
 - `klaviyo-events-daily` (毎日 04:15 JST、Clicked Email events → attribution per-order tag)
 - `crux-history-daily` (毎日 05:00 JST、CrUX History API 経由 URL 別 Core Web Vitals → ec_page_ux_health の Web Vitals 列ソース)
@@ -284,9 +255,6 @@ ORDER BY week_start DESC, revenue DESC;
 - `slack-messages-daily` (毎日 03:00 JST、Bot が join した channel の昨日分 → raw.ec_slack_messages、施策抽出元)
 - `backlog-issues-daily` (毎日 03:10 JST、updatedSince 差分 → raw.ec_backlog_issues、施策抽出元)
 - `initiative-extract-daily` (毎日 03:20 JST、EC 系 Slack+Backlog → Claude API → raw.ec_initiatives_raw)
-- `re_slack_messages_daily` (毎日 03:01 JST、不動産 Bot join channel 昨日分 → campwill-realestate.raw.re_slack_messages)
-- `re_backlog_issues_daily` (毎日 03:11 JST、不動産 Backlog 差分 → campwill-realestate.raw.re_backlog_issues)
-- `re_initiative_extract_daily` (毎日 03:21 JST、不動産系 → Claude API → campwill-realestate.raw.re_initiatives_raw、target_metric は inquiry/deal/seo)
 - `shopify_gender_tagging_daily` (毎日 04:35 JST、前日 order を Dify 経由 gender 判定 → customer/order tag 付与。KUBELL-991 で n8n Pro Webhook → Starter batch 化)
 - `cs-substitute-order-alert` (Webhook trigger、CS 業務用の代替注文アラート)
 - `slackfile_upload_to_freee` (Slack file → freee accounting、月次経費処理)
@@ -294,8 +262,12 @@ ORDER BY week_start DESC, revenue DESC;
 - `error-handler` (Error Trigger → Slack #n8n_alert)
 
 非稼働 (deactivated):
+- `openlogi-inventory-daily` (倉庫を OPENLOGI → はぴロジへ移管したため、2026-10-09 停止。はぴロジ API 有無は確認中)
 - `slack_to_google_sheets` (Webhook trigger、Slack app 側呼び出し無し、2026-07-07 deactivate)
 - `shopify-customers-daily` (対応する raw table 削除済、2026-07-07 deactivate)
+
+削除済:
+- `re_slack_messages_daily` / `re_backlog_issues_daily` / `re_initiative_extract_daily` (campwill-realestate 廃止に伴い 2026-08-12 削除)
 
 詳細は `n8n/docs/` 配下。
 

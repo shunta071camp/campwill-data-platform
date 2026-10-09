@@ -41,8 +41,9 @@ SCHEDULES = [
     ("mart-ec_seo_opportunity",        "ec_seo_opportunity.sql",        "every day 23:50"),
     ("mart-ec_competitor_gap",         "ec_competitor_gap.sql",         "every day 23:55"),
     # 在庫系 (n8n openlogi-inventory-daily が 05:00 JST = 20:00 UTC に raw 投入後)
-    ("mart-ec_inventory_health",          "ec_inventory_health.sql",          "every day 20:30"),
-    ("mart-ec_storage_cost_estimated",    "ec_storage_cost_estimated.sql",    "every day 20:35"),
+    # 倉庫移管 (OPENLOGI → はぴロジ) で停止中。ここに残すと同期時に disabled=False で再開されてしまう
+    # ("mart-ec_inventory_health",          "ec_inventory_health.sql",          "every day 20:30"),
+    # ("mart-ec_storage_cost_estimated",    "ec_storage_cost_estimated.sql",    "every day 20:35"),
     # ページ別 UX 健康度 (GA4 経由)。GA4 BQ Export が UTC 12-24h 遅延のため 23:00 UTC 以降
     # (旧 ec_ux_health は Clarity API 仕様変更で 5/25 以降 0 rows のまま稼働、KUBELL-XXX で廃止)
     ("mart-ec_page_ux_health",            "ec_page_ux_health.sql",            "every day 23:30"),

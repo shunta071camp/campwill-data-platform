@@ -1,3 +1,6 @@
+-- ⚠️ 2026-10-09 停止中: 物流倉庫を OPENLOGI → はぴロジへ移管 (2026-09) したため、
+--    OPENLOGI 在庫は全 SKU 0。スケジュールクエリは disabled、setup-scheduled-queries.py からも除外。
+--    再開するにはデータ源 (はぴロジ or Shopify 在庫) を差し替えてから。
 -- mart.ec_inventory_health: SKU 別 在庫健全性
 --
 -- 直近の OPENLOGI 在庫スナップショット × 過去 7/30/90 日の販売実績を JOIN し、

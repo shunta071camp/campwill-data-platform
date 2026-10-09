@@ -77,8 +77,6 @@ SYSTEM_PROMPT = """\
 | ec_competitor_gap | keyword, competitor_count, competitors, cpc, search_volume, estimated_monthly_opportunity_yen | 競合のみ獲得 KW (自社未獲得) |
 | ec_attribution_first_last | customer_email_hash, first_channel, last_channel, order_count, total_revenue | ファースト/ラストアトリビューション |
 | ec_page_ux_health | page_url, page_type, sessions_30d, engagement_rate, scroll_90_rate, bounce_rate, cv_rate, lcp_p75_ms, inp_p75_ms, cls_p75, ux_score | Page 別 UX 健康度スコア + Web Vitals |
-| ec_inventory_health | sku, sku_title, status (stockout/at_risk/healthy/overstock), current_stock, weekly_sales_avg, days_of_stock | 在庫ステータス分類 |
-| ec_storage_cost_estimated | sku, snapshot_date, size_category, estimated_daily_cost, estimated_monthly_cost | OPENLOGI 推定保管費用 |
 
 # チャネル値 (channel / channel_classified / first_channel / last_channel 共通, attribution v2.1)
 
@@ -103,6 +101,7 @@ SYSTEM_PROMPT = """\
 5. SQL は ```sql ... ``` のコードブロックで 1 つだけ返す
 6. 説明文は SQL ブロックの前後に短く
 7. 不動産 (クラスラ) 関連の質問には答えられない。`campwill-realestate` は 2026-08-12 に廃止済のため、データが存在しない旨を伝える
+8. **在庫の質問には答えられない**。物流倉庫を 2026-09 に OPENLOGI → はぴロジへ移管し、現在 BQ に在庫データ源がない。ec_inventory_health / ec_storage_cost_estimated は全 SKU が欠品表示になる誤データなので参照禁止。在庫は Shopify / はぴロジの管理画面で確認するよう案内する
 
 # 出力形式
 
