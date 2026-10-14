@@ -258,11 +258,11 @@ ORDER BY week_start DESC, revenue DESC;
 - `cs-substitute-order-alert` (Webhook trigger、CS 業務用の代替注文アラート)
 - `slackfile_upload_to_freee` (Slack file → freee accounting、月次経費処理)
 - `ZoomAIComanionTranscript` / `ZommRecordingTranscript` (Zoom 会議録画・文字起こし取り込み)
+- `hapilogi-inventory-daily` (n8n ID `66Q8rof7Zrgwirq9`、2026-10-14 稼働開始。毎日 03:00 JST、logiec API 在庫 → raw.ec_hapilogi_inventory_daily。認証は使い捨てトークンのため API 呼び出し毎に再認証。login_id/password/company_id は n8n credential `はぴロジ API Login` (Custom Auth, body 注入)、shipper_id / sales_channel_id は Config ノード。入荷・出荷実績は「毎回全件か差分か」をはぴロジに確認中のため未実装)
 - `error-handler` (Error Trigger → Slack #n8n_alert)
 
 非稼働 (deactivated):
 - `openlogi-inventory-daily` (倉庫を OPENLOGI → はぴロジへ移管したため、2026-10-09 停止。後継は `hapilogi-inventory-daily`)
-- `hapilogi-inventory-daily` (n8n ID `66Q8rof7Zrgwirq9`、2026-10-14 作成・手動テスト成功、**スケジュール有効化待ち**。毎日 03:00 JST、logiec API 在庫 → raw.ec_hapilogi_inventory_daily。認証は使い捨てトークンのため API 呼び出し毎に再認証。login_id/password/company_id は n8n credential `はぴロジ API Login` (Custom Auth, body 注入)、shipper_id / sales_channel_id は Config ノード。入荷・出荷実績は「毎回全件か差分か」をはぴロジに確認中のため未実装)
 - `clarity-metrics-daily` (Clarity API の仕様変更で Dead Click しか取れず、参照する mart も無いため 2026-10-09 停止)
 - `tiktok-ads` (TikTok 広告が 2026-09 から配信停止のため 2026-10-09 停止。再開時は有効化するだけで良い)
 
