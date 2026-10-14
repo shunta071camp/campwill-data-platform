@@ -50,6 +50,7 @@
 | `ec_backlog_issues` | Backlog 課題 | |
 | `rakko_inflow_keywords` | ラッコ KW（自社+競合 7URL × 週次） | |
 | `ec_openlogi_inventory_daily` | OPENLOGI 在庫日次スナップショット (**2026-09 にはぴロジへ倉庫移管、以降は全 SKU 0。取り込み停止中**) | |
+| `ec_hapilogi_inventory_daily` | はぴロジ (logiec API) 在庫日次スナップショット、商品単位 (ByProduct)。2026-10 新設、**認証情報待ちで未稼働** | item_code (= Shopify SKU), gross_inventory, allocatable_inventory |
 | `ec_clarity_metrics_daily` | Microsoft Clarity UX 指標日次（OVERALL / URL / Source+Device の 3 dimension_set） | |
 | `ec_ga4_purchase` (VIEW) | GA4 purchase event（transaction_id = Shopify order_id） | |
 | `ec_ga4_user_first_session` (VIEW) | GA4 user_pseudo_id 別の最初の session_start | |
@@ -260,7 +261,8 @@ ORDER BY week_start DESC, revenue DESC;
 - `error-handler` (Error Trigger → Slack #n8n_alert)
 
 非稼働 (deactivated):
-- `openlogi-inventory-daily` (倉庫を OPENLOGI → はぴロジへ移管したため、2026-10-09 停止。はぴロジ API 有無は確認中)
+- `openlogi-inventory-daily` (倉庫を OPENLOGI → はぴロジへ移管したため、2026-10-09 停止。後継は `hapilogi-inventory-daily`)
+- `hapilogi-inventory-daily` (未デプロイ。毎日 03:00 JST、logiec API 在庫 → raw.ec_hapilogi_inventory_daily。認証は使い捨てトークンのため API 呼び出し毎に再認証。login_id/password/company_id は n8n credential `はぴロジ API Login` (Custom Auth, body 注入)、shipper_id / sales_channel_id は Config ノード。入荷・出荷実績は「毎回全件か差分か」をはぴロジに確認中のため未実装)
 - `clarity-metrics-daily` (Clarity API の仕様変更で Dead Click しか取れず、参照する mart も無いため 2026-10-09 停止)
 - `tiktok-ads` (TikTok 広告が 2026-09 から配信停止のため 2026-10-09 停止。再開時は有効化するだけで良い)
 

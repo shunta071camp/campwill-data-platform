@@ -1,0 +1,10 @@
+[
+  {"name": "snapshot_date",         "type": "DATE",      "mode": "REQUIRED", "description": "スナップショット取得日 (JST)"},
+  {"name": "item_code",             "type": "STRING",    "mode": "REQUIRED", "description": "はぴロジ商品コード (= Shopify variant.sku と JOIN 想定)"},
+  {"name": "inventory_type",        "type": "INTEGER",   "mode": "NULLABLE", "description": "在庫区分 (はぴロジ定義。1=良品 想定、要確認)"},
+  {"name": "gross_inventory",       "type": "INTEGER",   "mode": "NULLABLE", "description": "在庫数量 (倉庫内総数)"},
+  {"name": "allocatable_inventory", "type": "INTEGER",   "mode": "NULLABLE", "description": "引当可能在庫 (出荷可能数)"},
+  {"name": "receipt_no",            "type": "INTEGER",   "mode": "NULLABLE", "description": "logiec API 受付番号 (同日複数回取得時の識別用)"},
+  {"name": "raw_payload",           "type": "STRING",    "mode": "NULLABLE", "description": "元 API レスポンス JSON (debug 用、各 item 1 件)"},
+  {"name": "inserted_at",           "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BQ 投入時刻"}
+]
