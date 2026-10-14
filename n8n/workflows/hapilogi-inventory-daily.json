@@ -85,7 +85,7 @@
       ],
       "credentials": {
         "httpCustomAuth": {
-          "id": "REPLACE_ME_HAPILOGI_CRED_ID",
+          "id": "yJvBd4tQnXqlYuHC",
           "name": "はぴロジ API Login"
         }
       },
@@ -192,7 +192,7 @@
       ],
       "credentials": {
         "httpCustomAuth": {
-          "id": "REPLACE_ME_HAPILOGI_CRED_ID",
+          "id": "yJvBd4tQnXqlYuHC",
           "name": "はぴロジ API Login"
         }
       },
@@ -310,7 +310,7 @@
       ],
       "credentials": {
         "httpCustomAuth": {
-          "id": "REPLACE_ME_HAPILOGI_CRED_ID",
+          "id": "yJvBd4tQnXqlYuHC",
           "name": "はぴロジ API Login"
         }
       },
@@ -560,6 +560,8 @@
   },
   "settings": {
     "executionOrder": "v1",
-    "errorWorkflow": "V72FkZBDign2AB1y"
-  }
+    "errorWorkflow": "V72FkZBDign2AB1y",
+    "timezone": "Asia/Tokyo"
+  },
+  "id": "66Q8rof7Zrgwirq9"
 }
