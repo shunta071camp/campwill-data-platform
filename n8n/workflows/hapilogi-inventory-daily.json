@@ -28,13 +28,13 @@
             {
               "id": "cfg-shipper",
               "name": "shipper_id",
-              "value": "REPLACE_ME_SHIPPER_ID",
+              "value": "755",
               "type": "string"
             },
             {
               "id": "cfg-channel",
               "name": "sales_channel_id",
-              "value": "REPLACE_ME_SALES_CHANNEL_ID",
+              "value": "1693",
               "type": "string"
             },
             {
