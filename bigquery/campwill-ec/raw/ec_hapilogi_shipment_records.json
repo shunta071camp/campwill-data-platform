@@ -1,0 +1,22 @@
+[
+  {"name": "fetched_date",                  "type": "DATE",      "mode": "REQUIRED", "description": "取得日 (JST、partition)。差分 API のため実績の日付ではない"},
+  {"name": "receipt_no",                    "type": "INTEGER",   "mode": "NULLABLE", "description": "logiec API 受付番号"},
+  {"name": "order_management_no",           "type": "STRING",    "mode": "NULLABLE", "description": "受注管理No. (= Shopify 注文番号 #xxxxxx)"},
+  {"name": "order_no",                      "type": "STRING",    "mode": "NULLABLE", "description": "受注No. (= Shopify order id)"},
+  {"name": "order_no_sub",                  "type": "STRING",    "mode": "NULLABLE", "description": "受注No.枝番 (分納時)"},
+  {"name": "estimated_shipping_date",       "type": "DATE",      "mode": "NULLABLE", "description": "出荷予定日"},
+  {"name": "shipment_date",                 "type": "DATE",      "mode": "NULLABLE", "description": "出荷日"},
+  {"name": "total_units",                   "type": "INTEGER",   "mode": "NULLABLE", "description": "個口数"},
+  {"name": "invoice_no",                    "type": "STRING",    "mode": "NULLABLE", "description": "送り状番号1"},
+  {"name": "invoice_nos",                   "type": "STRING",    "mode": "NULLABLE", "description": "送り状番号1〜30 のうち空でないものをカンマ区切り"},
+  {"name": "row_no",                        "type": "INTEGER",   "mode": "NULLABLE", "description": "明細行No."},
+  {"name": "item_code",                     "type": "STRING",    "mode": "NULLABLE", "description": "商品コード (はぴロジ構成品単位。Shopify の蓋ありセットは本体+蓋に分解済)"},
+  {"name": "inventory_type",                "type": "INTEGER",   "mode": "NULLABLE", "description": "在庫区分"},
+  {"name": "lot_no",                        "type": "STRING",    "mode": "NULLABLE", "description": "ロットNo."},
+  {"name": "inbound_date",                  "type": "DATE",      "mode": "NULLABLE", "description": "入荷日"},
+  {"name": "expiration_date",               "type": "DATE",      "mode": "NULLABLE", "description": "消費期限"},
+  {"name": "shipping_instruction_quantity", "type": "INTEGER",   "mode": "NULLABLE", "description": "出荷指示数量"},
+  {"name": "shipment_quantity",             "type": "INTEGER",   "mode": "NULLABLE", "description": "出荷数"},
+  {"name": "raw_payload",                   "type": "STRING",    "mode": "NULLABLE", "description": "元 JSON ({header, detail})"},
+  {"name": "inserted_at",                   "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BQ 投入時刻"}
+]

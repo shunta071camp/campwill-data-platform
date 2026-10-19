@@ -1,0 +1,564 @@
+{
+  "name": "hapilogi-inbound-records",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "Schedule: Daily 3:30 AM JST",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-shipper",
+              "name": "shipper_id",
+              "value": "755",
+              "type": "string"
+            },
+            {
+              "id": "cfg-channel",
+              "name": "sales_channel_id",
+              "value": "1693",
+              "type": "string"
+            },
+            {
+              "id": "cfg-max",
+              "name": "max_polls",
+              "value": 30,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hapilogi.co.jp/hapi/api/authentication",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "auth-1",
+      "name": "Auth #1 (for create)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        300
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "yJvBd4tQnXqlYuHC",
+          "name": "はぴロジ API Login"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://hapilogi.co.jp/hapi/asims/api/shipper/inboundRecord/createRequiredData",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "AccessToken",
+              "value": "={{ $json.contents.access_token }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "shipper_id",
+              "value": "={{ $('Config').first().json.shipper_id }}"
+            },
+            {
+              "name": "sales_channel_id",
+              "value": "={{ $('Config').first().json.sales_channel_id }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "create",
+      "name": "logiec: inboundRecord/createRequiredData",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// createRequiredData のレスポンスから receipt_no を取り出す\nconst b = $input.first().json || {};\nconst receiptNo = b?.contents?.receipt_no;\nif (b.status !== 0 || !receiptNo) {\n  throw new Error(`createRequiredData failed: ${JSON.stringify(b).slice(0, 500)}`);\n}\nreturn [{ json: { receipt_no: receiptNo } }];\n"
+      },
+      "id": "extract-receipt",
+      "name": "Code: Extract receipt_no",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 20
+      },
+      "id": "wait",
+      "name": "Wait 20s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1000,
+        300
+      ],
+      "webhookId": "hapilogi-inbound-wait"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hapilogi.co.jp/hapi/api/authentication",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "auth-2",
+      "name": "Auth #2 (for status)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        300
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "yJvBd4tQnXqlYuHC",
+          "name": "はぴロジ API Login"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://hapilogi.co.jp/hapi/asims/api/shipper/inboundRecord/inquireStatus",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "AccessToken",
+              "value": "={{ $json.contents.access_token }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "receipt_no",
+              "value": "={{ $('Code: Extract receipt_no').first().json.receipt_no }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "status",
+      "name": "logiec: inboundRecord/inquireStatus",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 作成状況を判定。トークンは使い捨てなので毎ループ Auth からやり直す\n// Accepted / Processing → 待機して再問合せ\n// DataCreationCompleted / ExportComplete → get へ\n// DataCreationError / ExportError → 失敗 (errorWorkflow へ)\nconst b = $input.first().json || {};\nconst st = b?.contents?.status;\nconst maxPolls = Number($('Config').first().json.max_polls) || 30;\nconst poll = $runIndex + 1;\nif (b.status !== 0) throw new Error(`inquireStatus failed: ${JSON.stringify(b).slice(0, 500)}`);\nif (st === 'DataCreationError' || st === 'ExportError') {\n  throw new Error(`hapilogi export ${st}: ${JSON.stringify(b.contents?.errors || []).slice(0, 500)}`);\n}\nconst ready = st === 'DataCreationCompleted' || st === 'ExportComplete';\nif (!ready && poll >= maxPolls) throw new Error(`hapilogi export timeout after ${poll} polls (last status=${st})`);\nreturn [{ json: { ready, export_status: st, poll } }];\n"
+      },
+      "id": "judge",
+      "name": "Code: Judge Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "is-ready",
+              "leftValue": "={{ $json.ready }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-ready",
+      "name": "IF: Ready?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hapilogi.co.jp/hapi/api/authentication",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "auth-3",
+      "name": "Auth #3 (for get)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        200
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "yJvBd4tQnXqlYuHC",
+          "name": "はぴロジ API Login"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://hapilogi.co.jp/hapi/asims/api/shipper/inboundRecord/get",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "AccessToken",
+              "value": "={{ $json.contents.access_token }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "receipt_no",
+              "value": "={{ $('Code: Extract receipt_no').first().json.receipt_no }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "get",
+      "name": "logiec: inboundRecord/get",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2200,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// inboundRecord/get を BQ 行 (明細単位) に整形\n// 差分 API: 前回取得以降に更新された入荷実績のみ返る (更新分は再度返る → _latest view で dedup)。0 件は正常\nconst now = new Date().toISOString();\nconst todayJST = new Date(Date.now() + 9*60*60*1000).toISOString().split('T')[0];\nconst receiptNo = Number($('Code: Extract receipt_no').first().json.receipt_no);\nconst b = $input.first().json || {};\nif (b.status !== 0) throw new Error(`inboundRecord/get failed: ${JSON.stringify(b).slice(0, 500)}`);\nconst num = v => (v === null || v === undefined || v === '') ? null : Math.trunc(Number(v));\nconst str = v => (v === null || v === undefined || v === '') ? null : String(v);\nconst dt  = v => (typeof v === 'string' && /^\\d{4}-\\d{2}-\\d{2}/.test(v)) ? v.slice(0, 10) : null;\nconst rows = [];\nfor (const rec of (Array.isArray(b.contents) ? b.contents : [])) {\n  const h = rec.header || {};\n  for (const d of (Array.isArray(rec.details) ? rec.details : [])) {\n    rows.push({ json: {\n      fetched_date: todayJST,\n      receipt_no: receiptNo,\n      order_no: str(h.order_no),\n      warehouse_name: str(h.warehouse_name),\n      row_no: num(d.row_no),\n      item_code: str(d.item_code),\n      lot_no: str(d.lot_no),\n      expiration_date: dt(d.expiration_date),\n      inventory_type: num(d.inventory_type),\n      estimated_inbound_date: dt(d.estimated_inbound_date),\n      inbound_date: dt(d.inbound_date),\n      estimated_inbound_quantity: num(d.estimated_inbound_quantity),\n      inbound_quantity: num(d.inbound_quantity),\n      sales_return_note: str(d.sales_return_note),\n      raw_payload: JSON.stringify({ header: h, detail: d }),\n      inserted_at: now\n    }});\n  }\n}\nreturn rows;\n"
+      },
+      "id": "flatten",
+      "name": "Code: Flatten to BQ Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "insert",
+        "projectId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "campwill-ec",
+          "cachedResultName": "campwill-ec"
+        },
+        "datasetId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "raw",
+          "cachedResultName": "raw"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "ec_hapilogi_inbound_records",
+          "cachedResultName": "ec_hapilogi_inbound_records"
+        },
+        "options": {
+          "batchSize": 500
+        }
+      },
+      "id": "bq-insert",
+      "name": "BigQuery: Insert raw.ec_hapilogi_inbound_records",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        200
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "WCCQWQHLcPs05bNu",
+          "name": "Google Service Account account（EC）"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule: Daily 3:30 AM JST": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Auth #1 (for create)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth #1 (for create)": {
+      "main": [
+        [
+          {
+            "node": "logiec: inboundRecord/createRequiredData",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "logiec: inboundRecord/createRequiredData": {
+      "main": [
+        [
+          {
+            "node": "Code: Extract receipt_no",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Extract receipt_no": {
+      "main": [
+        [
+          {
+            "node": "Wait 20s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 20s": {
+      "main": [
+        [
+          {
+            "node": "Auth #2 (for status)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth #2 (for status)": {
+      "main": [
+        [
+          {
+            "node": "logiec: inboundRecord/inquireStatus",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "logiec: inboundRecord/inquireStatus": {
+      "main": [
+        [
+          {
+            "node": "Code: Judge Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Judge Status": {
+      "main": [
+        [
+          {
+            "node": "IF: Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Ready?": {
+      "main": [
+        [
+          {
+            "node": "Auth #3 (for get)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 20s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auth #3 (for get)": {
+      "main": [
+        [
+          {
+            "node": "logiec: inboundRecord/get",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "logiec: inboundRecord/get": {
+      "main": [
+        [
+          {
+            "node": "Code: Flatten to BQ Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Flatten to BQ Rows": {
+      "main": [
+        [
+          {
+            "node": "BigQuery: Insert raw.ec_hapilogi_inbound_records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Tokyo"
+  },
+  "id": "x4LajYbcmgfOEmtL"
+}
