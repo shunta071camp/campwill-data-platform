@@ -1,0 +1,18 @@
+[
+  {"name": "fetched_date",               "type": "DATE",      "mode": "REQUIRED", "description": "取得日 (JST、partition)。差分 API のため実績の日付ではない"},
+  {"name": "receipt_no",                 "type": "INTEGER",   "mode": "NULLABLE", "description": "logiec API 受付番号"},
+  {"name": "order_no",                   "type": "STRING",    "mode": "NULLABLE", "description": "発注No. (入荷予定登録時の発注No.)"},
+  {"name": "warehouse_name",             "type": "STRING",    "mode": "NULLABLE", "description": "倉庫名"},
+  {"name": "row_no",                     "type": "INTEGER",   "mode": "NULLABLE", "description": "明細行No."},
+  {"name": "item_code",                  "type": "STRING",    "mode": "NULLABLE", "description": "商品コード"},
+  {"name": "lot_no",                     "type": "STRING",    "mode": "NULLABLE", "description": "ロットNo."},
+  {"name": "expiration_date",            "type": "DATE",      "mode": "NULLABLE", "description": "消費期限"},
+  {"name": "inventory_type",             "type": "INTEGER",   "mode": "NULLABLE", "description": "在庫区分"},
+  {"name": "estimated_inbound_date",     "type": "DATE",      "mode": "NULLABLE", "description": "入荷予定日"},
+  {"name": "inbound_date",               "type": "DATE",      "mode": "NULLABLE", "description": "入荷日"},
+  {"name": "estimated_inbound_quantity", "type": "INTEGER",   "mode": "NULLABLE", "description": "入荷予定数"},
+  {"name": "inbound_quantity",           "type": "INTEGER",   "mode": "NULLABLE", "description": "入荷数"},
+  {"name": "sales_return_note",          "type": "STRING",    "mode": "NULLABLE", "description": "返品情報"},
+  {"name": "raw_payload",                "type": "STRING",    "mode": "NULLABLE", "description": "元 JSON ({header, detail})"},
+  {"name": "inserted_at",                "type": "TIMESTAMP", "mode": "REQUIRED", "description": "BQ 投入時刻"}
+]

@@ -51,6 +51,8 @@
 | `rakko_inflow_keywords` | ラッコ KW（自社+競合 7URL × 週次） | |
 | `ec_openlogi_inventory_daily` | OPENLOGI 在庫日次スナップショット (**2026-09 にはぴロジへ倉庫移管、以降は全 SKU 0。取り込み停止中**) | |
 | `ec_hapilogi_inventory_daily` | はぴロジ (logiec API) 在庫日次スナップショット、商品単位 (ByProduct)。2026-10-14 新設 (初回 27 SKU)。梱包資材・同梱物 (BOX/GW*/LogoLabel/brochure_*) も含む。Shopify の「蓋あり」セット SKU (`*L` 末尾) は単品 SKU + 蓋 (20L/24L) の構成品で管理されるため item_code には出ない | item_code (= Shopify SKU), gross_inventory, allocatable_inventory |
+| `ec_hapilogi_shipment_records` / `ec_hapilogi_shipment_records_latest` (VIEW) | はぴロジ出荷実績 (明細単位、差分取得を日次 INSERT)。`order_management_no` = Shopify 注文番号 (#xxx)、`order_no` = Shopify order id。出荷日・送り状番号・出荷数。初回 2026-10-19 に 8/19〜の全履歴を取得。**downstream は _latest を読む** | item_code は構成品単位 (蓋ありセットは本体+蓋に分解) |
+| `ec_hapilogi_inbound_records` / `ec_hapilogi_inbound_records_latest` (VIEW) | はぴロジ入荷実績 (明細単位、差分取得。更新分は再度返る)。`order_no` = 入荷予定の発注No.。予定数 vs 入荷数。**downstream は _latest を読む** | |
 | `ec_clarity_metrics_daily` | Microsoft Clarity UX 指標日次（OVERALL / URL / Source+Device の 3 dimension_set） | |
 | `ec_ga4_purchase` (VIEW) | GA4 purchase event（transaction_id = Shopify order_id） | |
 | `ec_ga4_user_first_session` (VIEW) | GA4 user_pseudo_id 別の最初の session_start | |
@@ -258,7 +260,9 @@ ORDER BY week_start DESC, revenue DESC;
 - `cs-substitute-order-alert` (Webhook trigger、CS 業務用の代替注文アラート)
 - `slackfile_upload_to_freee` (Slack file → freee accounting、月次経費処理)
 - `ZoomAIComanionTranscript` / `ZommRecordingTranscript` (Zoom 会議録画・文字起こし取り込み)
-- `hapilogi-inventory-daily` (n8n ID `66Q8rof7Zrgwirq9`、2026-10-14 稼働開始。毎日 03:00 JST、logiec API 在庫 → raw.ec_hapilogi_inventory_daily。認証は使い捨てトークンのため API 呼び出し毎に再認証。login_id/password/company_id は n8n credential `はぴロジ API Login` (Custom Auth, body 注入)、shipper_id / sales_channel_id は Config ノード。入荷・出荷実績は「毎回全件か差分か」をはぴロジに確認中のため未実装)
+- `hapilogi-inventory-daily` (n8n ID `66Q8rof7Zrgwirq9`、2026-10-14 稼働開始。毎日 03:00 JST、logiec API 在庫 → raw.ec_hapilogi_inventory_daily。認証は使い捨てトークンのため API 呼び出し毎に再認証。login_id/password/company_id は n8n credential `はぴロジ API Login` (Custom Auth, body 注入)、shipper_id / sales_channel_id は Config ノード。入荷・出荷実績は下記 2 本)
+- `hapilogi-shipment-records` (n8n ID `4KSQP4Qxj8pciszA`、毎日 03:20 JST、logiec shipmentRecord 差分 → raw.ec_hapilogi_shipment_records。チャネル 1693 で取得しても Shopify 連携の発送反映に影響しないことをはぴロジ確認済 (2026-10-19)。取りこぼし時ははぴロジ側でダウンロード履歴を削除すると一つ前の時点から再取得可)
+- `hapilogi-inbound-records` (n8n ID `x4LajYbcmgfOEmtL`、毎日 03:30 JST、logiec inboundRecord 差分 → raw.ec_hapilogi_inbound_records)
 - `error-handler` (Error Trigger → Slack #n8n_alert)
 
 非稼働 (deactivated):
